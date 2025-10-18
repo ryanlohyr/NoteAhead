@@ -1,0 +1,2 @@
+export { embed } from "./embeddings";
+

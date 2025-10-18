@@ -15,7 +15,8 @@
       "#api/*": ["api/*"],
       "#db/*": ["db/*"],
       "#shared/*": ["shared/*"],
-      "#use-case/*": ["use-case/*"]
+      "#use-case/*": ["use-case/*"],
+      "#libraries/*": ["libraries/*"]
     },
 
     /* Emit */

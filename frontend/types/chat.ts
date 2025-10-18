@@ -17,11 +17,20 @@ export interface ReasoningStep {
   isStreaming?: boolean;
 }
 
+export interface FunctionCall {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  isInProgress?: boolean;
+  isCompleted?: boolean;
+  result?: unknown;
+}
+
 export interface MessagePart {
   id: string;
-  type: "content" | "reasoning";
+  type: "content" | "reasoning" | "function_call";
   sequence: number;
-  data: string | ReasoningStep;
+  data: string | ReasoningStep | FunctionCall;
 }
 
 export type StreamingEvent =

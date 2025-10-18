@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { Message, ReasoningStep, MessagePart } from "@/types/chat";
+import { Message, ReasoningStep, MessagePart, FunctionCall } from "@/types/chat";
 
 interface UseStreamingChatProps {
   chatId?: string;
@@ -132,6 +132,7 @@ export const useStreamingChat = ({
         let currentReasoningStep: ReasoningStep | null = null;
         let currentParts: MessagePart[] = [];
         let sequenceCounter = 0;
+        const functionCallsMap = new Map<string, FunctionCall>();
 
         try {
           const decoder = new TextDecoder();
@@ -256,6 +257,58 @@ export const useStreamingChat = ({
                         onMessageUpdateRef.current?.(currentMessageId, {
                           parts: [...currentParts],
                         });
+                      }
+                      break;
+
+                    case "function_calls_to_execute":
+                      if (currentMessageId && data.functionCallsToExecute) {
+                        // Create function call parts for each tool call
+                        data.functionCallsToExecute.forEach((fc: any) => {
+                          const functionCall: FunctionCall = {
+                            id: fc.id,
+                            name: fc.name,
+                            arguments: fc.arguments,
+                            isInProgress: true,
+                            isCompleted: false,
+                          };
+                          functionCallsMap.set(fc.id, functionCall);
+                          
+                          // Add function call part
+                          currentParts.push({
+                            id: fc.id,
+                            type: "function_call",
+                            sequence: sequenceCounter++,
+                            data: functionCall,
+                          });
+                        });
+                        
+                        onMessageUpdateRef.current?.(currentMessageId, {
+                          parts: [...currentParts],
+                        });
+                      }
+                      break;
+
+                    case "function_call_result":
+                      if (currentMessageId && data.id) {
+                        // Update the function call with results
+                        const functionCall = functionCallsMap.get(data.id);
+                        if (functionCall) {
+                          functionCall.isInProgress = false;
+                          functionCall.isCompleted = true;
+                          functionCall.result = data.result;
+                          
+                          // Update the corresponding part
+                          const partIndex = currentParts.findIndex(
+                            (part) => part.id === data.id
+                          );
+                          if (partIndex >= 0) {
+                            currentParts[partIndex].data = { ...functionCall };
+                          }
+                          
+                          onMessageUpdateRef.current?.(currentMessageId, {
+                            parts: [...currentParts],
+                          });
+                        }
                       }
                       break;
 

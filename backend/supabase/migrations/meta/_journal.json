@@ -15,6 +15,13 @@
       "when": 1760768018931,
       "tag": "0001_abnormal_gorilla_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1760809775804,
+      "tag": "0002_foamy_starbolt",
+      "breakpoints": true
     }
   ]
 }

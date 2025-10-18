@@ -45,7 +45,7 @@ export const FileViewer: React.FC<FileViewerProps> = ({
           pdfUrl={fileBlobUrl}
           fileId={selectedFile.id}
           fileName={selectedFile.name}
-          linesJsonPages={undefined}
+          linesJsonPages={selectedFile.linesJsonPages}
           onClose={onClose}
           onDownload={() => onDownload(selectedFile)}
         />

@@ -8,7 +8,8 @@
     "#api/*": "./dist/api/*.js",
     "#db/*": "./dist/db/*.js",
     "#shared/*": "./dist/shared/*.js",
-    "#use-case/*": "./dist/use-case/*.js"
+    "#use-case/*": "./dist/use-case/*.js",
+    "#libraries/*": "./dist/libraries/*.js"
   },
   "scripts": {
     "test": "jest",
@@ -29,7 +30,10 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.52",
+    "@langchain/textsplitters": "^1.0.0",
     "@supabase/supabase-js": "^2.49.4",
+    "ai": "^5.0.76",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
@@ -37,6 +41,7 @@
     "express": "5.1.0",
     "jsonwebtoken": "^9.0.2",
     "openai": "^6.5.0",
+    "p-limit": "^7.1.1",
     "postgres": "^3.4.7",
     "zod": "^3.24.2"
   },

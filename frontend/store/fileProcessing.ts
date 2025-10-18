@@ -1,38 +1,93 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 
-export type ProcessingFile = {
+/**
+ * File processing status interface
+ */
+export interface ProcessingFile {
   id: string;
   name: string;
-  status: 'pending' | 'uploading' | 'uploaded' | 'failed';
-  progress?: number;
-  error?: string;
-};
-
-interface FileProcessingStore {
-  files: ProcessingFile[];
-  isLoading: boolean;
-  setFiles: (files: ProcessingFile[]) => void;
-  setLoading: (loading: boolean) => void;
-  addFile: (file: ProcessingFile) => void;
-  updateFile: (id: string, updates: Partial<ProcessingFile>) => void;
-  removeFile: (id: string) => void;
-  clearFiles: () => void;
+  embeddingsStatus: "in_progress" | "failed";
 }
 
-export const useFileProcessingStore = create<FileProcessingStore>((set) => ({
+interface FileProcessingState {
+  files: ProcessingFile[];
+  isLoading: boolean;
+  hasFilesInProgress: boolean;
+  processingFileCount: number;
+  failedFileCount: number;
+  isExpanded: boolean;
+  isVisible: boolean;
+
+  // Actions
+  setFiles: (files: ProcessingFile[]) => void;
+  setLoading: (isLoading: boolean) => void;
+  addFile: (file: ProcessingFile) => void;
+  removeFile: (fileId: string) => void;
+  updateFileStatus: (fileId: string, status: "in_progress" | "failed") => void;
+  clearFiles: () => void;
+  toggleExpanded: () => void;
+  setExpanded: (expanded: boolean) => void;
+  setVisible: (visible: boolean) => void;
+}
+
+export const useFileProcessingStore = create<FileProcessingState>((set, get) => ({
   files: [],
   isLoading: false,
-  setFiles: (files) => set({ files }),
-  setLoading: (loading) => set({ isLoading: loading }),
-  addFile: (file) => set((state) => ({ files: [...state.files, file] })),
-  updateFile: (id, updates) =>
-    set((state) => ({
-      files: state.files.map((f) => (f.id === id ? { ...f, ...updates } : f)),
-    })),
-  removeFile: (id) =>
-    set((state) => ({
-      files: state.files.filter((f) => f.id !== id),
-    })),
-  clearFiles: () => set({ files: [] }),
+  hasFilesInProgress: false,
+  processingFileCount: 0,
+  failedFileCount: 0,
+  isExpanded: true,
+  isVisible: false,
+
+  setFiles: (files) => {
+    const processingFileCount = files.filter(file => file.embeddingsStatus === "in_progress").length;
+    const failedFileCount = files.filter(file => file.embeddingsStatus === "failed").length;
+    const hasFilesInProgress = processingFileCount > 0;
+    const shouldBeVisible = hasFilesInProgress || failedFileCount > 0;
+
+    set({
+      files,
+      processingFileCount,
+      failedFileCount,
+      hasFilesInProgress,
+      isVisible: shouldBeVisible,
+    });
+  },
+
+  setLoading: (isLoading) => set({ isLoading }),
+
+  addFile: (file) => {
+    const currentFiles = get().files;
+    const updatedFiles = [...currentFiles, file];
+    get().setFiles(updatedFiles);
+  },
+
+  removeFile: (fileId) => {
+    const currentFiles = get().files;
+    const updatedFiles = currentFiles.filter(file => file.id !== fileId);
+    get().setFiles(updatedFiles);
+  },
+
+  updateFileStatus: (fileId, status) => {
+    const currentFiles = get().files;
+    const updatedFiles = currentFiles.map(file =>
+      file.id === fileId ? { ...file, embeddingsStatus: status } : file
+    );
+    get().setFiles(updatedFiles);
+  },
+
+  clearFiles: () => set({
+    files: [],
+    hasFilesInProgress: false,
+    processingFileCount: 0,
+    failedFileCount: 0,
+    isVisible: false,
+  }),
+
+  toggleExpanded: () => set((state) => ({ isExpanded: !state.isExpanded })),
+
+  setExpanded: (expanded) => set({ isExpanded: expanded }),
+
+  setVisible: (visible) => set({ isVisible: visible }),
 }));
 

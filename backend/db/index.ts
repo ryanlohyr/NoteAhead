@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, and } from "drizzle-orm";
-import { files } from "./schemas/schema";
+import { eq, and, inArray, sql } from "drizzle-orm";
+import { files, chunks } from "./schemas/schema";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -18,6 +18,10 @@ export const db = drizzle(client);
 // File types
 export type FileRecord = typeof files.$inferSelect;
 export type NewFileRecord = typeof files.$inferInsert;
+
+// Chunk types
+export type ChunkRecord = typeof chunks.$inferSelect;
+export type NewChunkRecord = typeof chunks.$inferInsert;
 
 // File database operations
 export const fileDb = {
@@ -75,6 +79,145 @@ export const fileDb = {
       .where(and(eq(files.id, fileId), eq(files.userId, userId)))
       .returning();
     return result.length > 0;
+  },
+
+  updateFileStatus: async (
+    fileId: string,
+    status: "in_progress" | "success" | "failed",
+    summary?: string,
+    linesJsonPages?: any[]
+  ): Promise<FileRecord> => {
+    const updateData: any = {
+      embeddingsStatus: status,
+      updatedAt: new Date(),
+    };
+    
+    if (summary !== undefined) {
+      updateData.summary = summary;
+    }
+
+    if (linesJsonPages !== undefined) {
+      updateData.linesJsonPages = linesJsonPages;
+    }
+
+    const result = await db
+      .update(files)
+      .set(updateData)
+      .where(eq(files.id, fileId))
+      .returning();
+    return result[0];
+  },
+
+  getProcessingFiles: async (userId: string): Promise<FileRecord[]> => {
+    return db
+      .select()
+      .from(files)
+      .where(
+        and(
+          eq(files.userId, userId),
+          inArray(files.embeddingsStatus, ["in_progress", "failed"])
+        )
+      );
+  },
+};
+
+// Chunk database operations
+export const chunkDb = {
+  createChunks: async (
+    chunksData: Array<{
+      content: string;
+      originalContent: string;
+      context: string;
+      fileId: string;
+      embedding: number[];
+      pageNumbers: number[];
+      userId: string;
+      type: string;
+    }>
+  ): Promise<ChunkRecord[]> => {
+    const values = chunksData.map((chunk) => ({
+      content: chunk.content,
+      originalContent: chunk.originalContent,
+      context: chunk.context,
+      fileId: chunk.fileId,
+      embedding: chunk.embedding,
+      pageNumbers: chunk.pageNumbers,
+      userId: chunk.userId,
+      type: chunk.type,
+    }));
+    return db.insert(chunks).values(values).returning();
+  },
+
+  deleteChunksByFileId: async (fileId: string): Promise<void> => {
+    await db.delete(chunks).where(eq(chunks.fileId, fileId));
+  },
+
+  findSimilarChunks: async ({
+    userId,
+    embedding,
+    limit = 10,
+    similarityThreshold = 0.3,
+    typeFilters,
+  }: {
+    userId: string;
+    embedding: number[];
+    limit?: number;
+    similarityThreshold?: number;
+    typeFilters?: string[];
+  }): Promise<Array<ChunkRecord & { similarity: number }>> => {
+    const embeddingStr = `[${embedding.join(",")}]`;
+    
+    // Build the query - use raw SQL with proper parameter binding
+    let queryStr = `
+      SELECT 
+        id,
+        content,
+        file_id,
+        embedding,
+        created_at,
+        page_numbers,
+        original_content,
+        context,
+        user_id,
+        type,
+        1 - (embedding <=> $1::vector) as similarity
+      FROM chunks
+      WHERE user_id = $2
+        AND 1 - (embedding <=> $3::vector) > $4
+    `;
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const params: any[] = [embeddingStr, userId, embeddingStr, similarityThreshold];
+    
+    if (typeFilters && typeFilters.length > 0) {
+      queryStr += ` AND type = ANY($5)`;
+      params.push(typeFilters);
+    }
+    
+    queryStr += `
+      ORDER BY embedding <=> $${typeFilters && typeFilters.length > 0 ? 6 : 5}::vector
+      LIMIT $${typeFilters && typeFilters.length > 0 ? 7 : 6}
+    `;
+    
+    params.push(embeddingStr);
+    params.push(limit);
+
+    const result = await client.unsafe(queryStr, params);
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return result.map((row: any) => ({
+      id: row.id as string,
+      content: row.content as string,
+      fileId: row.file_id as string,
+      embedding: [],
+      createdAt: row.created_at as Date,
+      pageNumbers: row.page_numbers as number[],
+      originalContent: row.original_content as string | null,
+      context: row.context as string | null,
+      userId: row.user_id as string | null,
+      type: row.type as string,
+      similarity: parseFloat(row.similarity as string),
+    }));
   },
 };
 

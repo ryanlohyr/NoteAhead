@@ -1,21 +1,17 @@
 "use client";
 
-import { Message, ReasoningStep as ReasoningStepType } from "@/types/chat";
+import { Message } from "@/types/chat";
 import { cn } from "@/lib/utils";
-import { ReasoningStep } from "./ReasoningStep";
-import { useState } from "react";
+import { ThoughtProcess } from "./ThoughtProcess";
 
 interface MessageItemProps {
   message: Message;
 }
 
 export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
-  const [showReasoning, setShowReasoning] = useState(true);
   const isUser = message.role === "user";
 
-  // Extract reasoning and content parts
-  const reasoningParts =
-    message.parts?.filter((part) => part.type === "reasoning") || [];
+  // Extract content parts
   const contentParts =
     message.parts?.filter((part) => part.type === "content") || [];
 
@@ -28,57 +24,35 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
   return (
     <div
       className={cn(
-        "flex mb-4",
-        isUser ? "justify-end" : "justify-start"
+        "flex flex-col mb-4 w-full",
+        isUser ? "items-end" : "items-start"
       )}
     >
-      {/* Content */}
+      {/* Thought Process (reasoning + tool calls in sequential order) - full width */}
+      {!isUser && message.parts && message.parts.length > 0 && (
+        <ThoughtProcess parts={message.parts} isLoading={message.isStreaming} />
+      )}
+
+      {/* Main content - constrained width */}
       <div
         className={cn(
-          "flex flex-col space-y-2 max-w-[75%]",
-          isUser ? "items-end" : "items-start"
+          "rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words max-w-[75%]",
+          isUser
+            ? "bg-blue-500 text-white rounded-tr-sm"
+            : "bg-blue-50 text-gray-900 rounded-tl-sm"
         )}
       >
-        {/* Reasoning steps */}
-        {!isUser && reasoningParts.length > 0 && (
-          <div className="space-y-2 w-full">
-            <button
-              onClick={() => setShowReasoning(!showReasoning)}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {showReasoning ? "Hide" : "Show"} reasoning
-            </button>
-            {showReasoning &&
-              reasoningParts.map((part) => (
-                <ReasoningStep
-                  key={part.id}
-                  reasoning={part.data as ReasoningStepType}
-                />
-              ))}
-          </div>
-        )}
-
-        {/* Main content */}
-        <div
-          className={cn(
-            "rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words",
-            isUser
-              ? "bg-blue-500 text-white rounded-tr-sm"
-              : "bg-blue-50 text-gray-900 rounded-tl-sm"
-          )}
-        >
-          {content.length === 0 ? (
-            <div className="flex items-center space-x-2">
-              <div className="flex space-x-1">
-                <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                <div className="w-2 h-2 bg-current rounded-full animate-bounce"></div>
-              </div>
+        {content.length === 0 ? (
+          <div className="flex items-center space-x-2">
+            <div className="flex space-x-1">
+              <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+              <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+              <div className="w-2 h-2 bg-current rounded-full animate-bounce"></div>
             </div>
-          ) : (
-            content
-          )}
-        </div>
+          </div>
+        ) : (
+          content
+        )}
       </div>
     </div>
   );

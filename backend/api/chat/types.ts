@@ -24,11 +24,19 @@ export interface MessagePart {
   data: string | ReasoningStep;
 }
 
+export interface FunctionCallToExecute {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
 export type StreamingEvent =
   | { type: "content"; content: string }
   | { type: "reasoning-started" }
   | { type: "reasoning-delta"; delta: string }
   | { type: "reasoning-end" }
+  | { type: "function_calls_to_execute"; functionCallsToExecute: FunctionCallToExecute[] }
+  | { type: "function_call_result"; id: string; result: unknown }
   | { type: "message-start"; id: string }
   | { type: "message-end"; id: string }
   | { type: "error"; error: string; details: string };

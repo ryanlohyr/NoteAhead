@@ -3,6 +3,7 @@
 import "@/app/globals.css";
 import { QueryProvider } from "@/providers/QueryProvider";
 import { AuthProvider } from "@/components/Auth";
+import { GlobalFileProcessingMonitor } from "@/components/GlobalFileProcessingMonitor";
 import { Toaster } from "sonner";
 
 export default function RootLayout({
@@ -16,6 +17,7 @@ export default function RootLayout({
         <QueryProvider>
           <AuthProvider>
             {children}
+            <GlobalFileProcessingMonitor />
             <Toaster position="top-right" richColors />
           </AuthProvider>
         </QueryProvider>

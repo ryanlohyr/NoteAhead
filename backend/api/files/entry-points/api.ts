@@ -8,6 +8,9 @@ import {
   batchCreateFilesUseCase,
   deleteFileUseCase,
   downloadFileUseCase,
+  processFileForEmbeddings,
+  getProcessingFilesUseCase,
+  retryFileProcessingUseCase,
 } from "#use-case/files/files.js";
 
 export default function filesRoutes(app: Express) {
@@ -39,6 +42,9 @@ export default function filesRoutes(app: Express) {
         userId: file.userId,
         storageUrl: file.s3Url,
         fileType: file.mimeType,
+        embeddingsStatus: file.embeddingsStatus,
+        summary: file.summary,
+        linesJsonPages: file.linesJsonPages,
         createdAt: file.createdAt,
         updatedAt: file.updatedAt,
       }));
@@ -50,6 +56,39 @@ export default function filesRoutes(app: Express) {
     } catch (error) {
       console.error("Error getting files:", error);
       res.status(500).json({ success: false, error: "Failed to get files" });
+    }
+  });
+
+  // Get files that are currently processing or failed (for monitoring)
+  // IMPORTANT: This must come BEFORE the /:id route to avoid matching "processing-status" as an ID
+  router.get("/processing-status", async (req: Request, res: Response) => {
+    try {
+      const authReq = req as AuthenticatedRequest;
+      const userId = authReq.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: "User not authenticated",
+        });
+      }
+
+      const files = await getProcessingFilesUseCase(userId);
+
+      // Map database fields to API response format
+      const mappedFiles = files.map((file) => ({
+        id: file.id,
+        name: file.name,
+        embeddingsStatus: file.embeddingsStatus,
+      }));
+
+      res.json({
+        success: true,
+        files: mappedFiles,
+      });
+    } catch (error) {
+      console.error("Error getting processing files:", error);
+      res.status(500).json({ success: false, error: "Failed to get processing files" });
     }
   });
 
@@ -80,6 +119,9 @@ export default function filesRoutes(app: Express) {
         userId: file.userId,
         storageUrl: file.s3Url,
         fileType: file.mimeType,
+        embeddingsStatus: file.embeddingsStatus,
+        summary: file.summary,
+        linesJsonPages: file.linesJsonPages,
         createdAt: file.createdAt,
         updatedAt: file.updatedAt,
       };
@@ -130,6 +172,9 @@ export default function filesRoutes(app: Express) {
         userId: file.userId,
         storageUrl: file.s3Url,
         fileType: file.mimeType,
+        embeddingsStatus: file.embeddingsStatus,
+        summary: file.summary,
+        linesJsonPages: file.linesJsonPages,
         createdAt: file.createdAt,
         updatedAt: file.updatedAt,
       };
@@ -137,6 +182,11 @@ export default function filesRoutes(app: Express) {
       res.json({
         success: true,
         file: mappedFile,
+      });
+
+      // Process file for embeddings in background (don't await)
+      processFileForEmbeddings(file, userId).catch((error) => {
+        console.error("Error processing file for embeddings:", error);
       });
     } catch (error) {
       console.error("Error creating file:", error);
@@ -185,6 +235,9 @@ export default function filesRoutes(app: Express) {
         userId: file.userId,
         storageUrl: file.s3Url,
         fileType: file.mimeType,
+        embeddingsStatus: file.embeddingsStatus,
+        summary: file.summary,
+        linesJsonPages: file.linesJsonPages,
         createdAt: file.createdAt,
         updatedAt: file.updatedAt,
       }));
@@ -193,6 +246,13 @@ export default function filesRoutes(app: Express) {
         success: true,
         files: mappedFiles,
       });
+
+      // Process all files for embeddings in background (don't await)
+      for (const file of createdFiles) {
+        processFileForEmbeddings(file, userId).catch((error) => {
+          console.error(`Error processing file ${file.id} for embeddings:`, error);
+        });
+      }
     } catch (error) {
       console.error("Error batch creating files:", error);
       res.status(500).json({ success: false, error: "Failed to batch create files" });
@@ -227,6 +287,51 @@ export default function filesRoutes(app: Express) {
     } catch (error) {
       console.error("Error deleting file:", error);
       res.status(500).json({ success: false, error: "Failed to delete file" });
+    }
+  });
+
+  // Poll file processing status
+  router.get("/:id/poll", async (req: Request, res: Response) => {
+    try {
+      const authReq = req as AuthenticatedRequest;
+      const userId = authReq.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: "User not authenticated",
+        });
+      }
+
+      const { id } = req.params;
+
+      const file = await getFileUseCase(id, userId);
+
+      if (!file) {
+        return res.status(404).json({ success: false, error: "File not found" });
+      }
+
+      // Map database fields to API response format with status
+      const mappedFile = {
+        id: file.id,
+        name: file.name,
+        userId: file.userId,
+        storageUrl: file.s3Url,
+        fileType: file.mimeType,
+        embeddingsStatus: file.embeddingsStatus,
+        summary: file.summary,
+        createdAt: file.createdAt,
+        updatedAt: file.updatedAt,
+      };
+
+      res.json({
+        success: true,
+        status: file.embeddingsStatus,
+        file: mappedFile,
+      });
+    } catch (error) {
+      console.error("Error polling file status:", error);
+      res.status(500).json({ success: false, error: "Failed to poll file status" });
     }
   });
 
@@ -271,6 +376,36 @@ export default function filesRoutes(app: Express) {
     } catch (error) {
       console.error("Error downloading file:", error);
       res.status(500).json({ success: false, error: "Failed to download file" });
+    }
+  });
+
+  // Retry file processing
+  router.post("/:id/retry-processing", async (req: Request, res: Response) => {
+    try {
+      const authReq = req as AuthenticatedRequest;
+      const userId = authReq.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: "User not authenticated",
+        });
+      }
+
+      const { id } = req.params;
+
+      await retryFileProcessingUseCase(id, userId);
+
+      res.json({
+        success: true,
+        message: "File processing retry started",
+      });
+    } catch (error) {
+      console.error("Error retrying file processing:", error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to retry file processing",
+      });
     }
   });
 

@@ -2,41 +2,14 @@ import { Response } from "express";
 import OpenAI from "openai";
 import { StreamingEvent } from "../types";
 import { saveMessage } from "../data_access";
+import { addNumbersTool, searchKnowledgeBaseTool, executeTool } from "../tools";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Tool definition: Add two numbers
-const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
-  {
-    type: "function",
-    function: {
-      name: "addNumbers",
-      description: "Add two numbers together and return the sum",
-      parameters: {
-        type: "object",
-        properties: {
-          a: {
-            type: "number",
-            description: "The first number to add",
-          },
-          b: {
-            type: "number",
-            description: "The second number to add",
-          },
-        },
-        required: ["a", "b"],
-      },
-    },
-  },
-];
-
-// Tool implementation
-async function addNumbers(args: { a: number; b: number }): Promise<number> {
-  const { a, b } = args;
-  return a + b;
-}
+// Tool definitions
+const tools = [addNumbersTool, searchKnowledgeBaseTool];
 
 export const getChatStream = async (
   message: string,
@@ -59,134 +32,151 @@ export const getChatStream = async (
         id: messageId,
       });
 
-      const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-        {
-          role: "system",
-          content:
-            "You are a helpful assistant. When asked to add numbers, use the addNumbers function.",
-        },
+      const inputMessages: Array<{
+        role: string;
+        content: string | Array<{ type: string; text: string }>;
+      }> = [
         {
           role: "user",
-          content: message,
+          content: [{ type: "input_text", text: message }],
         },
       ];
 
       let fullResponse = "";
       let isComplete = false;
+      const maxIterations = 10;
+      let iterations = 0;
 
-      // Use a while loop to handle potential multiple tool calls
-      while (!isComplete) {
-        const stream = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: messages,
-          tools: tools,
-          tool_choice: "auto",
+      // Use a while loop to handle potential multiple tool calls (agentic loop)
+      while (!isComplete && iterations < maxIterations) {
+        iterations++;
+
+        const systemInstruction = `You are a helpful AI assistant. 
+        
+When users ask about their documents or uploaded files, use the search_knowledge_base tool to find relevant information.
+When asked to add numbers, use the addNumbers function.
+
+Always provide clear, helpful responses based on the tools available to you.`;
+
+        // Use OpenAI Responses API with o3 model
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const stream: any = await openai.responses.create({
+          input: [
+            {
+              role: "developer",
+              content: systemInstruction,
+            },
+            ...inputMessages,
+          ],
+          model: "o3-mini",
           stream: true,
-        });
+          reasoning: {
+            effort: "medium",
+            summary: "auto",
+          },
+          tools: iterations === maxIterations ? undefined : tools,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any);
 
-        let currentToolCalls: {
+        let currentFunctionCalls: Array<{
           id: string;
           name: string;
           arguments: string;
-        }[] = [];
+        }> = [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let responseOutput: Array<Record<string, any>> = [];
 
-        // Process the stream
-        for await (const chunk of stream) {
-          const delta = chunk.choices[0]?.delta;
-
-          // Handle content streaming
-          if (delta?.content) {
-            fullResponse += delta.content;
+        // Process the stream events
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for await (const event of stream as any) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const eventAny = event as any;
+          if (eventAny.type === "response.output_text.delta") {
+            fullResponse += eventAny.delta;
             sendSSEEvent({
               type: "content",
-              content: delta.content,
+              content: eventAny.delta,
             });
-          }
-
-          // Handle tool calls
-          if (delta?.tool_calls) {
-            for (const toolCall of delta.tool_calls) {
-              const index = toolCall.index;
-              if (!currentToolCalls[index]) {
-                currentToolCalls[index] = {
-                  id: toolCall.id || "",
-                  name: toolCall.function?.name || "",
-                  arguments: "",
-                };
-              }
-              if (toolCall.function?.arguments) {
-                currentToolCalls[index].arguments +=
-                  toolCall.function.arguments;
-              }
-            }
-          }
-
-          // Check if we're done
-          if (chunk.choices[0]?.finish_reason) {
-            const finishReason = chunk.choices[0].finish_reason;
-
-            if (finishReason === "tool_calls" && currentToolCalls.length > 0) {
-              // Send reasoning event for tool call
-              sendSSEEvent({ type: "reasoning-started" });
-              sendSSEEvent({
-                type: "reasoning-delta",
-                delta: `Calling function: ${currentToolCalls[0].name}...`,
-              });
-              sendSSEEvent({ type: "reasoning-end" });
-
-              // Execute tool calls
-              const toolResults = [];
-              for (const toolCall of currentToolCalls) {
-                let result: string;
-                try {
-                  const args = JSON.parse(toolCall.arguments);
-
-                  if (toolCall.name === "addNumbers") {
-                    const sum = await addNumbers(args);
-                    result = JSON.stringify({ sum });
-                  } else {
-                    result = JSON.stringify({ error: "Unknown function" });
-                  }
-                } catch (error) {
-                  result = JSON.stringify({
-                    error:
-                      error instanceof Error
-                        ? error.message
-                        : "Function execution failed",
-                  });
-                }
-
-                toolResults.push({
-                  tool_call_id: toolCall.id,
-                  role: "tool" as const,
-                  content: result,
-                });
-              }
-
-              // Add assistant message with tool calls
-              messages.push({
-                role: "assistant",
-                tool_calls: currentToolCalls.map((tc) => ({
-                  id: tc.id,
-                  type: "function" as const,
-                  function: {
-                    name: tc.name,
-                    arguments: tc.arguments,
-                  },
-                })),
-              });
-
-              // Add tool results to messages
-              messages.push(...toolResults);
-
-              // Continue the loop to get final response
-              currentToolCalls = [];
-            } else {
-              // No more tool calls, we're done
-              isComplete = true;
-            }
+          } else if (eventAny.type === "response.reasoning_summary_part.added") {
+            sendSSEEvent({ type: "reasoning-started" });
+          } else if (eventAny.type === "response.reasoning_summary_text.delta") {
+            sendSSEEvent({ type: "reasoning-delta", delta: eventAny.delta });
+          } else if (eventAny.type === "response.reasoning_summary_text.done") {
+            sendSSEEvent({ type: "reasoning-end" });
+          } else if (eventAny.type === "response.completed") {
+            responseOutput = eventAny.response.output;
           }
         }
+
+        // Extract function calls from response output
+        currentFunctionCalls = responseOutput
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .filter((item: Record<string, any>) => item.type === "function_call")
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map((item: Record<string, any>) => ({
+            id: item.call_id as string,
+            name: item.name as string,
+            arguments: item.arguments as string,
+          }));
+
+        console.log(`Iteration ${iterations}: Found ${currentFunctionCalls.length} function calls`);
+
+        // If no function calls, we're done
+        if (currentFunctionCalls.length === 0) {
+          isComplete = true;
+          break;
+        }
+
+        // Send function calls to execute event
+        sendSSEEvent({
+          type: "function_calls_to_execute",
+          functionCallsToExecute: currentFunctionCalls.map((fc) => ({
+            id: fc.id,
+            name: fc.name,
+            arguments: JSON.parse(fc.arguments),
+          })),
+        });
+
+        // Execute function calls
+        const functionCallResults: string[] = [];
+        for (const functionCall of currentFunctionCalls) {
+          try {
+            const args = JSON.parse(functionCall.arguments);
+            const result = await executeTool(functionCall.name, args, { userId });
+
+            // Send function call result event
+            sendSSEEvent({
+              type: "function_call_result",
+              id: functionCall.id,
+              result,
+            });
+
+            functionCallResults.push(`
+Function: ${functionCall.name}
+Arguments: ${JSON.stringify(args)}
+Result: ${JSON.stringify(result)}
+`);
+          } catch (error) {
+            const errorResult = {
+              error: error instanceof Error ? error.message : "Function execution failed",
+            };
+            sendSSEEvent({
+              type: "function_call_result",
+              id: functionCall.id,
+              result: errorResult,
+            });
+            functionCallResults.push(`
+Function: ${functionCall.name}
+Error: ${errorResult.error}
+`);
+          }
+        }
+
+        // Add assistant response with function results back to conversation
+        inputMessages.push({
+          role: "assistant",
+          content: `Function call results:\n${functionCallResults.join("\n")}`,
+        });
       }
 
       // Save the complete message to storage
@@ -200,6 +190,7 @@ export const getChatStream = async (
 
       res.end();
     } catch (error) {
+      console.error("Error in chat stream:", error);
       sendSSEEvent({
         type: "error",
         error: "Failed to generate response",

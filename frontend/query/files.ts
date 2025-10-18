@@ -13,6 +13,9 @@ export type FileItem = {
   fileType: string;
   createdAt: string;
   status?: "pending" | "uploading" | "uploaded" | "failed";
+  embeddingsStatus?: "in_progress" | "success" | "failed";
+  summary?: string;
+  linesJsonPages?: any[];
 };
 
 /**
@@ -25,6 +28,18 @@ export const fileApi = {
    */
   getAllFiles: async (): Promise<{ files: FileItem[]; success: boolean }> => {
     const url = makeApiUrl("/api/files");
+    const data = await fetchWrapper<{ files: FileItem[]; success: boolean }>(url, {
+      method: "GET",
+    });
+    return data;
+  },
+
+  /**
+   * Get files that are currently in progress or failed processing
+   * Used for efficient monitoring of file processing status
+   */
+  getProcessingFiles: async () => {
+    const url = makeApiUrl("/api/files/processing-status");
     const data = await fetchWrapper<{ files: FileItem[]; success: boolean }>(url, {
       method: "GET",
     });
@@ -97,6 +112,17 @@ export const fileApi = {
     });
     return blob;
   },
+
+  /**
+   * Retry file processing for failed files
+   */
+  retryFileProcessing: async (fileId: string): Promise<{ success: boolean }> => {
+    const url = makeApiUrl(`/api/files/${fileId}/retry-processing`);
+    const data = await fetchWrapper<{ success: boolean }>(url, {
+      method: "POST",
+    });
+    return data;
+  },
 };
 
 /**
@@ -129,6 +155,8 @@ export const useCreateFile = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["files"] });
+      // Invalidate processing files to trigger the global monitor
+      queryClient.invalidateQueries({ queryKey: ["processing-files"] });
       toast.success("File created successfully");
     },
     onError: (error) => {
@@ -159,6 +187,8 @@ export const useBatchCreateFiles = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["files"] });
+      // Invalidate processing files to trigger the global monitor
+      queryClient.invalidateQueries({ queryKey: ["processing-files"] });
     },
     onError: (error) => {
       toast.error("Failed to create files", {
@@ -180,11 +210,42 @@ export const useDeleteFile = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["files"] });
+      // Invalidate processing files to update the global monitor if a processing/failed file was deleted
+      queryClient.invalidateQueries({ queryKey: ["processing-files"] });
       toast.success("File deleted successfully");
     },
     onError: (error) => {
       toast.error("Failed to delete file", {
         description: error instanceof Error ? error.message : "Unknown error",
+      });
+    },
+  });
+};
+
+/**
+ * Hook to retry file processing for failed embeddings
+ */
+export const useRetryFileProcessing = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (fileId: string) => {
+      return fileApi.retryFileProcessing(fileId);
+    },
+    onSuccess: () => {
+      // Invalidate relevant queries to refresh the UI
+      queryClient.invalidateQueries({ queryKey: ["files"] });
+      queryClient.invalidateQueries({ queryKey: ["processing-files"] });
+
+      // Show success toast
+      toast.success("Processing retry started", {
+        description: "File processing has been restarted. The status will update when complete.",
+      });
+    },
+    onError: (error) => {
+      // Show error toast
+      toast.error("Retry failed", {
+        description: error instanceof Error ? error.message : "Failed to retry file processing",
       });
     },
   });
