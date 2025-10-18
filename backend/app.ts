@@ -78,12 +78,14 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 import helloRoutes from "./api/hello/entry-points/api";
 import chatRoutes from "./api/chat/entry-points/api";
 import authRoutes from "./api/auth/entry-points/api";
+import collabRoutes from "./api/collab/entry-points/api";
 import filesRoutes from "./api/files/entry-points/api";
 
 // Register API routes
 helloRoutes(app);
 chatRoutes(app);
 authRoutes(app);
+collabRoutes(app);
 filesRoutes(app);
 
 export { app, port };

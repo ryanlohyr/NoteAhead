@@ -1,7 +1,11 @@
+"use client";
+
+import CollabEditor from "@/components/editor/CollabEditor";
+
 export default function NewNotePage() {
   return (
-    <div>
-      <h1>New Note</h1>
+    <div className="p-6">
+      <CollabEditor docId="new-note" />
     </div>
   );
 }
