@@ -135,4 +135,3 @@ export const Chat: React.FC = () => {
     </div>
   );
 };
-

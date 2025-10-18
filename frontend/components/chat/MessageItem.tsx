@@ -67,9 +67,16 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
               : "bg-blue-50 text-gray-900 rounded-tl-sm"
           )}
         >
-          {content}
-          {message.isStreaming && !reasoningParts.length && (
-            <span className="inline-block w-1 h-4 ml-1 bg-current animate-pulse" />
+          {content.length === 0 ? (
+            <div className="flex items-center space-x-2">
+              <div className="flex space-x-1">
+                <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                <div className="w-2 h-2 bg-current rounded-full animate-bounce"></div>
+              </div>
+            </div>
+          ) : (
+            content
           )}
         </div>
       </div>
