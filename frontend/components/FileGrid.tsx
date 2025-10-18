@@ -15,13 +15,13 @@ const getFileIcon = (fileType?: string) => {
   }
   
   if (fileType.startsWith("image/")) {
-    return <Image className="h-8 w-8 text-blue-500" />;
+    return <Image className="h-8 w-8 text-muted-foreground" />;
   } else if (fileType === "application/pdf") {
-    return <FileText className="h-8 w-8 text-red-500" />;
+    return <FileText className="h-8 w-8 text-muted-foreground" />;
   } else if (
     fileType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ) {
-    return <FileText className="h-8 w-8 text-blue-600" />;
+    return <FileText className="h-8 w-8 text-muted-foreground" />;
   } else if (
     fileType === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
   ) {
@@ -33,7 +33,7 @@ const getFileIcon = (fileType?: string) => {
 const getStatusBadge = (status?: FileItem["status"]) => {
   const statusConfig = {
     pending: { label: "Pending", className: "bg-yellow-100 text-yellow-800" },
-    uploading: { label: "Uploading...", className: "bg-blue-100 text-blue-800" },
+    uploading: { label: "Uploading...", className: "bg-muted text-foreground border border-border" },
     uploaded: { label: "Uploaded", className: "bg-green-100 text-green-800" },
     failed: { label: "Failed", className: "bg-red-100 text-red-800" },
   };

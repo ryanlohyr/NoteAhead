@@ -38,8 +38,8 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
         className={cn(
           "rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words max-w-[75%]",
           isUser
-            ? "bg-blue-500 text-white rounded-tr-sm"
-            : "bg-blue-50 text-gray-900 rounded-tl-sm"
+            ? "bg-muted/50 border border-border rounded-tr-sm"
+            : "bg-muted/30 border border-border/50 rounded-tl-sm"
         )}
       >
         {content.length === 0 ? (

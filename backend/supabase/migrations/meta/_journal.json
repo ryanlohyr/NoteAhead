@@ -17,8 +17,15 @@
       "breakpoints": true
     },
     {
-      "idx": 2,
+      "idx": 3,
       "version": "7",
+      "when": 1760813550643,
+      "tag": "0002_brave_miracleman",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "8",
       "when": 1760809775804,
       "tag": "0002_foamy_starbolt",
       "breakpoints": true

@@ -58,16 +58,16 @@ export const FileUploadModal: React.FC<{
             <label
               className={`flex flex-col items-center justify-center w-full h-32 border-2 ${
                 isDragging
-                  ? "border-blue-400 bg-blue-50 dark:bg-blue-900/20"
-                  : "border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600"
+                  ? "border-foreground bg-muted"
+                  : "border-border bg-muted/30 hover:bg-muted/50"
               } border-dashed rounded-lg cursor-pointer transition-colors`}
               {...dragProps}
             >
               <div className="flex flex-col items-center justify-center pt-5 pb-6">
                 {isDragging ? (
                   <>
-                    <Upload className="w-8 h-8 mb-3 text-blue-500" />
-                    <p className="mb-1 text-sm text-blue-500">Drop your file here</p>
+                    <Upload className="w-8 h-8 mb-3 text-foreground" />
+                    <p className="mb-1 text-sm text-foreground">Drop your file here</p>
                   </>
                 ) : (
                   <>

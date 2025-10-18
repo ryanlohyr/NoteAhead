@@ -5,7 +5,7 @@ import { useChatStore } from "@/store/chat";
 import { useStreamingChat } from "@/hooks/useStreamingChat";
 import { MessageItem } from "./MessageItem";
 import { ChatInput } from "./ChatInput";
-import { Bot, AlertCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Message } from "@/types/chat";
 
@@ -89,11 +89,7 @@ export const Chat: React.FC = () => {
         <div className="px-4 py-6">
           {messages.length === 0 ? (
             <div className="text-center text-muted-foreground py-12">
-              <Bot className="mx-auto h-12 w-12 mb-4 opacity-50" />
-              <p className="text-lg font-medium mb-2">Start a conversation</p>
-              <p className="text-sm">
-                Type a message below to begin chatting with the assistant
-              </p>
+              <p className="text-sm">Start a conversation</p>
             </div>
           ) : (
             messages.map((message) => (

@@ -53,38 +53,21 @@ app.use(API_PREFIX, (req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// Global timeout middleware - 20 seconds for all routes
-app.use((req: Request, res: Response, next: NextFunction) => {
-  const timeout = 15_000;
-
-  const timeoutId = setTimeout(() => {
-    console.error(`Request approaching timeout: ${req.method} ${req.path}`);
-  }, timeout);
-
-  // Clear timeout when response is finished
-  res.on("finish", () => {
-    clearTimeout(timeoutId);
-  });
-
-  // Clear timeout when response is closed
-  res.on("close", () => {
-    clearTimeout(timeoutId);
-  });
-
-  next();
-});
-
 // Import and register routes
 import helloRoutes from "./api/hello/entry-points/api";
 import chatRoutes from "./api/chat/entry-points/api";
 import authRoutes from "./api/auth/entry-points/api";
+import collabRoutes from "./api/collab/entry-points/api";
 import filesRoutes from "./api/files/entry-points/api";
+import notesRoutes from "./api/notes/entry-points/api";
 
 // Register API routes
 helloRoutes(app);
 chatRoutes(app);
 authRoutes(app);
+collabRoutes(app);
 filesRoutes(app);
+notesRoutes(app);
 
 export { app, port };
 

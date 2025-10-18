@@ -18,16 +18,12 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body>
-        <SidebarProvider>
-          <AppSidebar />
-          <SidebarInset>
-            <ResizableWrapper>{children}</ResizableWrapper>
-          </SidebarInset>
-        </SidebarProvider>
-      </body>
-    </html>
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>
+        <ResizableWrapper>{children}</ResizableWrapper>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 

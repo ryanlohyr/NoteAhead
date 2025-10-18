@@ -129,7 +129,7 @@ export const GlobalFileProcessingMonitor = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {hasFilesInProgress && (
-                    <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   )}
                   <FileText className="h-4 w-4" />
                   <span className="font-medium text-sm">File Processing</span>
@@ -203,7 +203,7 @@ export const GlobalFileProcessingMonitor = () => {
                       key={file.id}
                       className={cn(
                         "flex items-center gap-2 p-2 rounded-md border",
-                        file.embeddingsStatus === "in_progress" && "bg-blue-50 border-blue-200",
+                        file.embeddingsStatus === "in_progress" && "bg-muted/30 border-border",
                         file.embeddingsStatus === "failed" && "bg-red-50 border-red-200"
                       )}
                     >

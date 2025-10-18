@@ -30,7 +30,8 @@ const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
-const SIDEBAR_KEYBOARD_SHORTCUT = "b"
+// Removed keyboard shortcut to avoid conflict with editor bold formatting (Cmd-B)
+// const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
 // Helper function to read the sidebar state from cookie
 function getSidebarStateFromCookie(): boolean | undefined {
@@ -139,23 +140,24 @@ const SidebarProvider = React.forwardRef<
         : setOpen((open) => !open)
     }, [isMobile, setOpen, setOpenMobile])
 
-    // Adds a keyboard shortcut to toggle the sidebar.
-    React.useEffect(() => {
-      if (!isHydrated) return
-      
-      const handleKeyDown = (event: KeyboardEvent) => {
-        if (
-          event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
-          (event.metaKey || event.ctrlKey)
-        ) {
-          event.preventDefault()
-          toggleSidebar()
-        }
-      }
-
-      window.addEventListener("keydown", handleKeyDown)
-      return () => window.removeEventListener("keydown", handleKeyDown)
-    }, [toggleSidebar, isHydrated])
+    // Keyboard shortcut removed to avoid conflict with editor formatting (Cmd-B for bold)
+    // If you need a sidebar shortcut, consider using a different key combination
+    // React.useEffect(() => {
+    //   if (!isHydrated) return
+    //   
+    //   const handleKeyDown = (event: KeyboardEvent) => {
+    //     if (
+    //       event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
+    //       (event.metaKey || event.ctrlKey)
+    //     ) {
+    //       event.preventDefault()
+    //       toggleSidebar()
+    //     }
+    //   }
+    //
+    //   window.addEventListener("keydown", handleKeyDown)
+    //   return () => window.removeEventListener("keydown", handleKeyDown)
+    // }, [toggleSidebar, isHydrated])
 
     // We add a state so that we can do data-state="expanded" or "collapsed".
     // This makes it easier to style the sidebar with Tailwind classes.

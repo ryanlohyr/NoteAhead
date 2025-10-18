@@ -86,7 +86,15 @@ npm start
 - [Backend README](./backend/README.md)
 - [Frontend README](./frontend/README.md)
 
-## License
 
-MIT
+## Readme stuff
+https://supabase.com/docs/guides/functions/quickstart
+
+this creates a new function
+supabase functions new hello-world
+
+this deploys it     
+supabase functions serve hello-world
+
+
 

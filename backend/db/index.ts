@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { eq, and, inArray, sql } from "drizzle-orm";
-import { files, chunks } from "./schemas/schema";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
+import { files, notes, chunks } from "./schemas/schema";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -18,6 +18,10 @@ export const db = drizzle(client);
 // File types
 export type FileRecord = typeof files.$inferSelect;
 export type NewFileRecord = typeof files.$inferInsert;
+
+// Note types
+export type NoteRecord = typeof notes.$inferSelect;
+export type NewNoteRecord = typeof notes.$inferInsert;
 
 // Chunk types
 export type ChunkRecord = typeof chunks.$inferSelect;
@@ -80,7 +84,6 @@ export const fileDb = {
       .returning();
     return result.length > 0;
   },
-
   updateFileStatus: async (
     fileId: string,
     status: "in_progress" | "success" | "failed",
@@ -218,6 +221,72 @@ export const chunkDb = {
       type: row.type as string,
       similarity: parseFloat(row.similarity as string),
     }));
+  },
+};
+
+// Note database operations
+export const noteDb = {
+  getAllNotes: async (userId: string): Promise<NoteRecord[]> => {
+    return db
+      .select()
+      .from(notes)
+      .where(eq(notes.userId, userId))
+      .orderBy(desc(notes.updatedAt));
+  },
+
+  getNote: async (noteId: string, userId: string): Promise<NoteRecord | null> => {
+    const result = await db
+      .select()
+      .from(notes)
+      .where(and(eq(notes.id, noteId), eq(notes.userId, userId)))
+      .limit(1);
+    return result[0] || null;
+  },
+
+  createNote: async (data: {
+    title: string;
+    content: unknown;
+    userId: string;
+    folderId?: string;
+  }): Promise<NoteRecord> => {
+    const result = await db
+      .insert(notes)
+      .values({
+        title: data.title,
+        content: data.content,
+        userId: data.userId,
+        folderId: data.folderId,
+      })
+      .returning();
+    return result[0];
+  },
+
+  updateNote: async (
+    noteId: string,
+    userId: string,
+    data: {
+      title?: string;
+      content?: unknown;
+      folderId?: string;
+    }
+  ): Promise<NoteRecord | null> => {
+    const result = await db
+      .update(notes)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(notes.id, noteId), eq(notes.userId, userId)))
+      .returning();
+    return result[0] || null;
+  },
+
+  deleteNote: async (noteId: string, userId: string): Promise<boolean> => {
+    const result = await db
+      .delete(notes)
+      .where(and(eq(notes.id, noteId), eq(notes.userId, userId)))
+      .returning();
+    return result.length > 0;
   },
 };
 
