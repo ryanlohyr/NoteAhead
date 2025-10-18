@@ -68,6 +68,26 @@ const marks: { [key: string]: MarkSpec } = {
     parseDOM: [{ tag: "sup" }],
     toDOM: () => ["sup", 0],
   },
+
+  // Add placeholder/temporary mark for inserted text
+  placeholder: {
+    parseDOM: [
+      {
+        tag: "span.placeholder-text",
+        getAttrs: () => {
+          return {};
+        },
+      },
+    ],
+    toDOM: () => [
+      "span",
+      {
+        class: "placeholder-text",
+        style: "color: #999; opacity: 0.7;",
+      },
+      0,
+    ],
+  },
 };
 
 export const schema = new Schema({

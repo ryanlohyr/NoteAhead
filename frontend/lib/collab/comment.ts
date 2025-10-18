@@ -112,8 +112,8 @@ class CommentState {
   }
 
   static init(config: { comments: { version: number; comments: any[] }; doc: PMNode }): CommentState {
-    const decos = config.comments.comments.map((c) => deco(c.from, c.to, new Comment(c.text, c.id)));
-    return new CommentState(config.comments.version, DecorationSet.create(config.doc, decos), []);
+    const decos = config?.comments?.comments.map((c) => deco(c.from, c.to, new Comment(c.text, c.id))) || [];
+    return new CommentState(config?.comments?.version || 0, DecorationSet.create(config?.doc || schema.node("doc"), decos), []);
   }
 }
 

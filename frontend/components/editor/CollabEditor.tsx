@@ -1,344 +1,377 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { EditorState, Transaction } from "prosemirror-state";
+import { EditorState, Transaction, TextSelection, Plugin, PluginKey } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
-import { Step } from "prosemirror-transform";
 import { history } from "prosemirror-history";
-import { collab, receiveTransaction, sendableSteps, getVersion } from "prosemirror-collab";
 import { dropCursor } from "prosemirror-dropcursor";
 import { gapCursor } from "prosemirror-gapcursor";
 import { menuBar } from "prosemirror-menu";
 import { baseKeymap } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
 import { schema } from "@/lib/collab/schema";
-import { GET, POST } from "@/lib/collab/http";
 import { Reporter } from "@/lib/collab/reporter";
 import { commentPlugin, commentUI } from "@/lib/collab/comment";
 import { getFullMenu } from "@/lib/collab/menu";
 import { buildKeymap } from "@/lib/collab/keymap";
 import { FloatingMenu } from "./FloatingMenu";
+import { supabase } from "@/lib/supabase";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 
 interface CollabEditorProps {
   docId: string;
-  apiUrl?: string;
+  edgeFunctionUrl?: string;
 }
 
-function badVersion(err: Error & { status?: number }): boolean {
-  return err.status === 400 && /invalid version/i.test(err.toString());
+interface HealthCheckResponse {
+  status: string;
+  channel: string;
+  docId: string;
+  userId: string;
+  timestamp: string;
 }
 
-class State {
-  edit: EditorState | null;
-  comm: string;
+export default function CollabEditor({ 
+  docId, 
+  edgeFunctionUrl = process.env.NEXT_PUBLIC_SUPABASE_URL 
+    ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/collab-session`
+    : "http://localhost:54321/functions/v1/collab-session"
+}: CollabEditorProps) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [editorView, setEditorView] = useState<EditorView | null>(null);
+  const [isHealthy, setIsHealthy] = useState<boolean>(false);
+  const [channelName, setChannelName] = useState<string | null>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  const reportRef = useRef<Reporter>(new Reporter());
+  const placeholderRangeRef = useRef<{ from: number; to: number } | null>(null);
+  const [isPendingAccept, setIsPendingAccept] = useState<boolean>(false);
 
-  constructor(edit: EditorState | null, comm: string) {
-    this.edit = edit;
-    this.comm = comm;
-  }
-}
+  // Function to insert text at the 6th paragraph
+  const insertTextAtParagraph6 = () => {
+    if (!editorView) return;
 
-function repeat<T>(val: T, n: number): T[] {
-  const result: T[] = [];
-  for (let i = 0; i < n; i++) result.push(val);
-  return result;
-}
+    let targetPos = 0;
+    let paragraphCount = 0;
+    let lastParagraphPos = 0;
+    
+    // Count paragraphs and track positions
+    editorView.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'paragraph') {
+        paragraphCount++;
+        lastParagraphPos = pos + node.nodeSize;
+        if (paragraphCount === 6) {
+          targetPos = pos + node.nodeSize;
+          return false; // stop iterating
+        }
+      }
+    });
+    
+    let transaction = editorView.state.tr;
+    
+    // If we have fewer than 6 paragraphs, create the missing ones
+    if (paragraphCount < 6) {
+      const paragraphsNeeded = 6 - paragraphCount;
+      const insertPos = lastParagraphPos || editorView.state.doc.content.size;
+      
+      // Create empty paragraphs
+      for (let i = 0; i < paragraphsNeeded; i++) {
+        const emptyParagraph = schema.node('paragraph');
+        transaction = transaction.insert(insertPos + (i * 2), emptyParagraph);
+      }
+      
+      // Calculate position of the 6th paragraph after insertion
+      // Each paragraph node takes 2 positions (opening + closing)
+      targetPos = insertPos + (paragraphsNeeded * 2) - 1;
+    }
+    
+    // Insert the text with placeholder mark at the 6th paragraph
+    const textToInsert = "Text inserted at paragraph 6!";
+    const placeholderMark = schema.marks.placeholder.create();
+    
+    transaction = transaction.insert(
+      targetPos,
+      schema.text(textToInsert, [placeholderMark])
+    );
+    
+    // Store the range of the placeholder text
+    placeholderRangeRef.current = {
+      from: targetPos,
+      to: targetPos + textToInsert.length,
+    };
+    
+    // Set pending accept state to true
+    setIsPendingAccept(true);
+    
+    editorView.dispatch(transaction);
+  };
 
-function userString(n: number): string {
-  return "(" + n + " user" + (n === 1 ? "" : "s") + ")";
-}
+  // Health check effect
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        reportRef.current.success();
+        
+        // Get JWT from Supabase session
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-interface DispatchAction {
-  type: string;
-  doc?: unknown;
-  version?: number;
-  users?: number;
-  comments?: { version: number; comments: unknown[] };
-  error?: Error;
-  transaction?: Transaction;
-  requestDone?: boolean;
-}
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
 
-class EditorConnection {
-  report: Reporter;
-  url: string;
-  state: State;
-  request: (Promise<string> & { abort?: () => void }) | null;
-  backOff: number;
-  view: EditorView | null;
-  onUpdateUsers?: (users: number) => void;
+        if (session?.access_token) {
+          headers["Authorization"] = `Bearer ${session.access_token}`;
+        }
 
-  constructor(report: Reporter, url: string, onUpdateUsers?: (users: number) => void) {
-    this.report = report;
-    this.url = url;
-    this.state = new State(null, "start");
-    this.request = null;
-    this.backOff = 0;
-    this.view = null;
-    this.onUpdateUsers = onUpdateUsers;
-    this.dispatch = this.dispatch.bind(this);
-    this.start();
-  }
+        const response = await fetch(`${edgeFunctionUrl}?docId=${docId}`, {
+          method: "GET",
+          headers,
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Health check failed: ${response.statusText}`);
+        }
 
-  dispatch(action: DispatchAction) {
-    let newEditState: EditorState | null = null;
-    if (action.type === "loaded") {
-      if (this.onUpdateUsers && action.users !== undefined) this.onUpdateUsers(action.users);
-      // Create editor state with comments config for plugin initialization
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const editState = EditorState.create({
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        doc: action.doc as any,
+        const data: HealthCheckResponse = await response.json();
+        
+        if (data.status === "healthy") {
+          setIsHealthy(true);
+          setChannelName(data.channel);
+          reportRef.current.success();
+        } else {
+          throw new Error("Edge function not healthy");
+        }
+      } catch (error) {
+        console.error("Health check failed:", error);
+        reportRef.current.failure(error as Error);
+        setIsHealthy(false);
+      }
+    };
+
+    checkHealth();
+  }, [docId, edgeFunctionUrl]);
+
+  // Initialize editor and Realtime connection
+  useEffect(() => {
+    if (!editorRef.current || !isHealthy || !channelName) return;
+
+    // Custom Tab key handler to remove placeholder mark
+    const handleTab = (state: EditorState, dispatch?: (tr: Transaction) => void) => {
+      const placeholderRange = placeholderRangeRef.current;
+      if (!placeholderRange) return false;
+
+      const { from, to } = placeholderRange;
+      
+      // Check if there's placeholder text in the document
+      const hasMark = state.doc.rangeHasMark(from, to, schema.marks.placeholder);
+      
+      if (hasMark && dispatch) {
+        let tr = state.tr.removeMark(from, to, schema.marks.placeholder);
+        // Use the transaction's document to create the selection
+        tr = tr.setSelection(TextSelection.create(tr.doc, to));
+        dispatch(tr);
+        placeholderRangeRef.current = null; // Clear the reference
+        setIsPendingAccept(false); // Clear pending state
+        return true;
+      }
+      
+      return false;
+    };
+
+    // Plugin to handle autocomplete-like behavior for placeholder text
+    const placeholderInputPlugin = new Plugin({
+      key: new PluginKey("placeholderInput"),
+      props: {
+        handleTextInput(view, from, to, text) {
+          const placeholderRange = placeholderRangeRef.current;
+          if (!placeholderRange) return false;
+
+          const { from: placeholderFrom, to: placeholderTo } = placeholderRange;
+
+          // Check if we're at the start or within the placeholder
+          if (from >= placeholderFrom && from <= placeholderTo) {
+            // Get the placeholder text
+            const placeholderText = view.state.doc.textBetween(placeholderFrom, placeholderTo);
+            
+            // Get the position within the placeholder text
+            const posInPlaceholder = from - placeholderFrom;
+            const expectedChar = placeholderText[posInPlaceholder];
+
+            // Normalize spaces: treat regular space (32) and non-breaking space (160) as equal
+            const normalizeChar = (char: string) => {
+              const code = char.charCodeAt(0);
+              // Convert non-breaking space (160) to regular space (32)
+              if (code === 160) return ' ';
+              return char;
+            };
+
+            const normalizedText = normalizeChar(text);
+            const normalizedExpected = normalizeChar(expectedChar);
+
+            if (normalizedText === normalizedExpected) {
+              // Character matches! Remove placeholder mark from just this character
+              const tr = view.state.tr.removeMark(
+                from,
+                from + 1,
+                schema.marks.placeholder
+              );
+              // Move cursor forward
+              tr.setSelection(TextSelection.create(tr.doc, from + 1));
+              view.dispatch(tr);
+              
+              // Update the placeholder range to reflect the new start position
+              placeholderRangeRef.current = {
+                from: from + 1,
+                to: placeholderTo,
+              };
+              
+              // If we've accepted the whole text, clear the reference and pending state
+              if (from + 1 >= placeholderTo) {
+                placeholderRangeRef.current = null;
+                setIsPendingAccept(false);
+              }
+              
+              return true;
+            } else {
+              // Character doesn't match! Delete the entire placeholder
+              const tr = view.state.tr.delete(placeholderFrom, placeholderTo);
+              view.dispatch(tr);
+              placeholderRangeRef.current = null;
+              setIsPendingAccept(false); // Clear pending state
+              
+              // Let the typed character be inserted normally by returning false
+              return false;
+            }
+          }
+
+          return false;
+        },
+      },
+    });
+
+    // Create initial editor state
+    const initialDoc = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.text("Start editing your document..."),
+      ]),
+    ]);
+
+    const state = EditorState.create({
+      doc: initialDoc,
         plugins: [
+          placeholderInputPlugin, // Add placeholder input handler
           buildKeymap(),
-          keymap(baseKeymap),
+          keymap({
+            ...baseKeymap,
+            "Tab": handleTab, // Add Tab handler
+          }),
           dropCursor(),
           gapCursor(),
           menuBar({ floating: false, content: getFullMenu() }),
           history(),
-          collab({ version: action.version || 0 }),
           commentPlugin,
-          commentUI((transaction: Transaction) => this.dispatch({ type: "transaction", transaction })),
-        ],
-        comments: action.comments,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any);
-      this.state = new State(editState, "poll");
-      this.poll();
-    } else if (action.type === "restart") {
-      this.state = new State(null, "start");
-      this.start();
-    } else if (action.type === "poll") {
-      this.state = new State(this.state.edit, "poll");
-      this.poll();
-    } else if (action.type === "recover") {
-      if (action.error && (action.error as Error & { status?: number }).status && (action.error as Error & { status?: number }).status! < 500) {
-        this.report.failure(action.error);
-        this.state = new State(null, "");
-      } else {
-        this.state = new State(this.state.edit, "recover");
-        if (action.error) this.recover(action.error);
-      }
-    } else if (action.type === "transaction" && action.transaction) {
-      newEditState = this.state.edit!.apply(action.transaction);
-    }
-
-    if (newEditState) {
-      let sendable;
-      if (newEditState.doc.content.size > 40000) {
-        if (this.state.comm !== "detached") this.report.failure("Document too big. Detached.");
-        this.state = new State(newEditState, "detached");
-      } else if (
-        (this.state.comm === "poll" || action.requestDone) &&
-        (sendable = this.sendable(newEditState))
-      ) {
-        this.closeRequest();
-        this.state = new State(newEditState, "send");
-        this.send(newEditState, sendable);
-      } else if (action.requestDone) {
-        this.state = new State(newEditState, "poll");
-        this.poll();
-      } else {
-        this.state = new State(newEditState, this.state.comm);
-      }
-    }
-
-    // Sync the editor with this.state.edit
-    if (this.state.edit) {
-      if (this.view) {
-        this.view.updateState(this.state.edit);
-      }
-    }
-  }
-
-  start() {
-    this.run(GET(this.url)).then(
-      (data: string) => {
-        const parsed = JSON.parse(data);
-        this.report.success();
-        this.backOff = 0;
-        this.dispatch({
-          type: "loaded",
-          doc: schema.nodeFromJSON(parsed.doc),
-          version: parsed.version,
-          users: parsed.users,
-          comments: { version: parsed.commentVersion, comments: parsed.comments },
-        });
-      },
-      (err: Error) => {
-        this.report.failure(err);
-      }
-    );
-  }
-
-  poll() {
-    const query =
-      "version=" +
-      getVersion(this.state.edit!) +
-      "&commentVersion=" +
-      (commentPlugin.getState(this.state.edit!) as { version: number }).version;
-    this.run(GET(this.url + "/events?" + query)).then(
-      (data: string) => {
-        this.report.success();
-        const parsed = JSON.parse(data);
-        this.backOff = 0;
-        if (parsed.steps && (parsed.steps.length || parsed.comment.length)) {
-          const tr = receiveTransaction(
-            this.state.edit!,
-            parsed.steps.map((j: unknown) => Step.fromJSON(schema, j)),
-            parsed.clientIDs
-          );
-          tr.setMeta(commentPlugin, {
-            type: "receive",
-            version: parsed.commentVersion,
-            events: parsed.comment,
-            sent: 0,
-          });
-          this.dispatch({ type: "transaction", transaction: tr, requestDone: true });
-        } else {
-          this.poll();
-        }
-        if (this.onUpdateUsers) this.onUpdateUsers(parsed.users);
-      },
-      (err: Error & { status?: number }) => {
-        if (err.status === 410 || badVersion(err)) {
-          this.report.failure(err);
-          this.dispatch({ type: "restart" });
-        } else if (err) {
-          this.dispatch({ type: "recover", error: err });
-        }
-      }
-    );
-  }
-
-  sendable(editState: EditorState) {
-    const steps = sendableSteps(editState);
-    const comments = (commentPlugin.getState(editState) as { unsentEvents: () => unknown[] }).unsentEvents();
-    if (steps || comments.length) return { steps, comments };
-    return null;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  send(editState: EditorState, { steps, comments }: { steps: any; comments: unknown[] }) {
-    const json = JSON.stringify({
-      version: getVersion(editState),
-      steps: steps ? steps.steps.map((s: Step) => s.toJSON()) : [],
-      clientID: steps ? steps.clientID : 0,
-      comment: comments || [],
+        commentUI((transaction: Transaction) => {
+          if (view) {
+            const newState = view.state.apply(transaction);
+            view.updateState(newState);
+            
+            // Broadcast change to Realtime
+            if (channelRef.current) {
+              channelRef.current.send({
+                type: "broadcast",
+                event: "editor-change",
+                payload: {
+                  doc: newState.doc.toJSON(),
+                  timestamp: Date.now(),
+                },
+              });
+            }
+          }
+        }),
+      ],
     });
-    this.run(POST(this.url + "/events", json, "application/json")).then(
-      (data: string) => {
-        this.report.success();
-        this.backOff = 0;
-        const tr = steps
-          ? receiveTransaction(
-              this.state.edit!,
-              steps.steps,
-              repeat(steps.clientID, steps.steps.length)
-            )
-          : this.state.edit!.tr;
-        tr.setMeta(commentPlugin, {
-          type: "receive",
-          version: JSON.parse(data).commentVersion,
-          events: [],
-          sent: comments.length,
-        });
-        this.dispatch({ type: "transaction", transaction: tr, requestDone: true });
-      },
-      (err: Error & { status?: number }) => {
-        if (err.status === 409) {
-          this.backOff = 0;
-          this.dispatch({ type: "poll" });
-        } else if (badVersion(err)) {
-          this.report.failure(err);
-          this.dispatch({ type: "restart" });
-        } else {
-          this.dispatch({ type: "recover", error: err });
+
+    // Create editor view
+    const view = new EditorView(editorRef.current, {
+      state,
+      dispatchTransaction: (transaction: Transaction) => {
+        const newState = view.state.apply(transaction);
+        view.updateState(newState);
+        
+        // Broadcast changes to Realtime if there are doc changes
+        if (transaction.docChanged && channelRef.current) {
+          console.log("Broadcasting editor change to Realtime");
+          console.log(newState.doc.toJSON());
+
+          channelRef.current.send({
+            type: "broadcast",
+            event: "editor-change",
+            payload: {
+              doc: newState.doc.toJSON(),
+              timestamp: Date.now(),
+            },
+          });
         }
-      }
-    );
-  }
+      },
+    });
 
-  recover(err: Error) {
-    const newBackOff = this.backOff ? Math.min(this.backOff * 2, 6e4) : 200;
-    if (newBackOff > 1000 && this.backOff < 1000) this.report.delay(err);
-    this.backOff = newBackOff;
-    setTimeout(() => {
-      if (this.state.comm === "recover") this.dispatch({ type: "poll" });
-    }, this.backOff);
-  }
+    setEditorView(view);
 
-  closeRequest() {
-    if (this.request && this.request.abort) {
-      this.request.abort();
-      this.request = null;
-    }
-  }
+    // Setup Realtime channel
+    const channel = supabase.channel(channelName);
+    
+    channel
+      .on("broadcast", { event: "editor-update" }, (payload) => {
+        console.log("Received editor update from server:", payload);
+        // Handle incoming updates if needed
+        // For single-user editing, this might just be a confirmation
+      })
+      .subscribe((status) => {
+        console.log(`Channel ${channelName} status:`, status);
+        if (status === "SUBSCRIBED") {
+          reportRef.current.success();
+        } else if (status === "CHANNEL_ERROR") {
+          reportRef.current.failure(new Error("Channel connection failed"));
+        }
+      });
 
-  run(request: Promise<string> & { abort?: () => void }) {
-    return (this.request = request);
-  }
-
-  close() {
-    this.closeRequest();
-    if (this.view) {
-      this.view.destroy();
-      this.view = null;
-    }
-  }
-
-  setView(view: EditorView | null, container?: HTMLElement) {
-    if (this.view) this.view.destroy();
-    this.view = view;
-    if (view && container) {
-      container.innerHTML = "";
-      container.appendChild(view.dom);
-    }
-  }
-}
-
-export default function CollabEditor({ docId, apiUrl = "http://localhost:8080" }: CollabEditorProps) {
-  const editorRef = useRef<HTMLDivElement>(null);
-  const connectionRef = useRef<EditorConnection | null>(null);
-  const [users, setUsers] = useState<number>(0);
-  const [editorView, setEditorView] = useState<EditorView | null>(null);
-
-  useEffect(() => {
-    if (!editorRef.current) return;
-
-    const report = new Reporter();
-    const url = `${apiUrl}/api/collab/docs/${docId}`;
-    const connection = new EditorConnection(report, url, (count) => setUsers(count));
-    connectionRef.current = connection;
-
-    // Wait for the editor state to be loaded
-    const checkViewInterval = setInterval(() => {
-      if (connection.state.edit && !connection.view) {
-        const view = new EditorView(editorRef.current!, {
-          state: connection.state.edit,
-          dispatchTransaction: (transaction: Transaction) =>
-            connection.dispatch({ type: "transaction", transaction }),
-        });
-        connection.setView(view, editorRef.current!);
-        setEditorView(view);
-        clearInterval(checkViewInterval);
-      }
-    }, 100);
+    channelRef.current = channel;
 
     return () => {
-      clearInterval(checkViewInterval);
-      if (connectionRef.current) {
-        connectionRef.current.close();
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      if (view) {
+        view.destroy();
       }
     };
-  }, [docId, apiUrl]);
+  }, [isHealthy, channelName, docId]);
 
   return (
     <div className="collab-editor-container relative h-[calc(100vh-50px)] flex flex-col overflow-hidden">
       <FloatingMenu view={editorView} />
       <div className="editor-info flex-shrink-0">
         <h2 className="text-xl font-semibold mb-2">{docId}</h2>
-        <div className="text-sm text-gray-600">{userString(users)}</div>
+        <div className="text-sm text-gray-600 flex items-center gap-4">
+          <div>
+            {isHealthy ? "Connected" : "Connecting..."}
+            {channelName && <span className="ml-2 text-xs text-gray-400">• {channelName}</span>}
+            {isPendingAccept && (
+              <span className="ml-2 text-xs text-orange-500 font-medium">
+                • Pending Accept (Tab to accept all)
+              </span>
+            )}
+          </div>
+          <button
+            onClick={insertTextAtParagraph6}
+            disabled={!editorView || isPendingAccept}
+            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          >
+            Insert Text at Line 6
+          </button>
+        </div>
       </div>
       <div ref={editorRef} className="editor-content prose max-w-none flex-1 flex flex-col min-h-0" />
       <style jsx global>{`
@@ -405,6 +438,11 @@ export default function CollabEditor({ docId, apiUrl = "http://localhost:8080" }
           background-color: #f5f5f5;
           padding: 2px 4px;
           border-radius: 3px;
+        }
+
+        .ProseMirror .placeholder-text {
+          color: #999;
+          opacity: 0.7;
         }
 
         .ProseMirror pre {
