@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { EditorState, Transaction, TextSelection, Plugin, PluginKey } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { history } from "prosemirror-history";
@@ -38,6 +38,7 @@ export default function CollabEditor({
     : "http://localhost:54321/functions/v1/collab-session"
 }: CollabEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const editorViewRef = useRef<EditorView | null>(null);
   const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [isHealthy, setIsHealthy] = useState<boolean>(false);
   const [channelName, setChannelName] = useState<string | null>(null);
@@ -45,9 +46,11 @@ export default function CollabEditor({
   const reportRef = useRef<Reporter>(new Reporter());
   const placeholderRangeRef = useRef<{ from: number; to: number } | null>(null);
   const [isPendingAccept, setIsPendingAccept] = useState<boolean>(false);
+  const isPendingAcceptRef = useRef<boolean>(false);
 
-  // Function to insert text at the 6th paragraph
-  const insertTextAtParagraph6 = () => {
+  // Function to insert text at a specific line number
+  const insertTextAtParagraph = useCallback((lineNumber: number, textToInsert: string = `Text inserted at line ${lineNumber}!`) => {
+    const editorView = editorViewRef.current;
     if (!editorView) return;
 
     let targetPos = 0;
@@ -59,7 +62,7 @@ export default function CollabEditor({
       if (node.type.name === 'paragraph') {
         paragraphCount++;
         lastParagraphPos = pos + node.nodeSize;
-        if (paragraphCount === 6) {
+        if (paragraphCount === lineNumber) {
           targetPos = pos + node.nodeSize;
           return false; // stop iterating
         }
@@ -68,9 +71,9 @@ export default function CollabEditor({
     
     let transaction = editorView.state.tr;
     
-    // If we have fewer than 6 paragraphs, create the missing ones
-    if (paragraphCount < 6) {
-      const paragraphsNeeded = 6 - paragraphCount;
+    // If we have fewer paragraphs than needed, create the missing ones
+    if (paragraphCount < lineNumber) {
+      const paragraphsNeeded = lineNumber - paragraphCount;
       const insertPos = lastParagraphPos || editorView.state.doc.content.size;
       
       // Create empty paragraphs
@@ -79,13 +82,12 @@ export default function CollabEditor({
         transaction = transaction.insert(insertPos + (i * 2), emptyParagraph);
       }
       
-      // Calculate position of the 6th paragraph after insertion
+      // Calculate position of the target paragraph after insertion
       // Each paragraph node takes 2 positions (opening + closing)
       targetPos = insertPos + (paragraphsNeeded * 2) - 1;
     }
     
-    // Insert the text with placeholder mark at the 6th paragraph
-    const textToInsert = "Text inserted at paragraph 6!";
+    // Insert the text with placeholder mark at the target paragraph
     const placeholderMark = schema.marks.placeholder.create();
     
     transaction = transaction.insert(
@@ -101,9 +103,10 @@ export default function CollabEditor({
     
     // Set pending accept state to true
     setIsPendingAccept(true);
+    isPendingAcceptRef.current = true;
     
     editorView.dispatch(transaction);
-  };
+  }, []);
 
   // Health check effect
   useEffect(() => {
@@ -134,6 +137,8 @@ export default function CollabEditor({
         }
 
         const data: HealthCheckResponse = await response.json();
+
+        console.log('data test', data);
         
         if (data.status === "healthy") {
           setIsHealthy(true);
@@ -169,10 +174,11 @@ export default function CollabEditor({
       if (hasMark && dispatch) {
         let tr = state.tr.removeMark(from, to, schema.marks.placeholder);
         // Use the transaction's document to create the selection
-        tr = tr.setSelection(TextSelection.create(tr.doc, to));
+        tr =               tr.setSelection(TextSelection.create(tr.doc, to));
         dispatch(tr);
         placeholderRangeRef.current = null; // Clear the reference
         setIsPendingAccept(false); // Clear pending state
+        isPendingAcceptRef.current = false;
         return true;
       }
       
@@ -230,6 +236,7 @@ export default function CollabEditor({
               if (from + 1 >= placeholderTo) {
                 placeholderRangeRef.current = null;
                 setIsPendingAccept(false);
+                isPendingAcceptRef.current = false;
               }
               
               return true;
@@ -239,6 +246,7 @@ export default function CollabEditor({
               view.dispatch(tr);
               placeholderRangeRef.current = null;
               setIsPendingAccept(false); // Clear pending state
+              isPendingAcceptRef.current = false;
               
               // Let the typed character be inserted normally by returning false
               return false;
@@ -292,6 +300,43 @@ export default function CollabEditor({
       ],
     });
 
+    // Helper function to get cursor position and line number
+    const getCursorInfo = (state: EditorState) => {
+      const { from } = state.selection;
+      let lineNumber = 0;
+      
+      state.doc.descendants((node, pos) => {
+        if (node.type.name === 'paragraph') {
+          lineNumber++;
+          if (pos + node.nodeSize >= from) {
+            return false; // stop iterating
+          }
+        }
+      });
+      
+      return { cursorPosition: from, lineNumber };
+    };
+
+    // Helper function to convert doc to markdown
+    const docToMarkdown = (state: EditorState): string => {
+      let markdown = '';
+      
+      state.doc.descendants((node) => {
+        if (node.type.name === 'paragraph') {
+          markdown += node.textContent + '\n';
+        } else if (node.type.name === 'heading') {
+          const level = node.attrs.level || 1;
+          markdown += '#'.repeat(level) + ' ' + node.textContent + '\n';
+        } else if (node.type.name === 'code_block') {
+          markdown += '```\n' + node.textContent + '\n```\n';
+        } else if (node.type.name === 'blockquote') {
+          markdown += '> ' + node.textContent + '\n';
+        }
+      });
+      
+      return markdown.trim();
+    };
+
     // Create editor view
     const view = new EditorView(editorRef.current, {
       state,
@@ -299,16 +344,25 @@ export default function CollabEditor({
         const newState = view.state.apply(transaction);
         view.updateState(newState);
         
-        // Broadcast changes to Realtime if there are doc changes
-        if (transaction.docChanged && channelRef.current) {
-          console.log("Broadcasting editor change to Realtime");
-          console.log(newState.doc.toJSON());
+        // Broadcast changes to Realtime if there are doc changes and not pending accept
+        if (transaction.docChanged && channelRef.current && !isPendingAcceptRef.current) {
+          const cursorInfo = getCursorInfo(newState);
+          const markdown = docToMarkdown(newState);
+          
+          console.log("Broadcasting editor change to Realtime", {
+            cursorPosition: cursorInfo.cursorPosition,
+            lineNumber: cursorInfo.lineNumber,
+            markdown: markdown.substring(0, 50) + '...',
+          });
 
           channelRef.current.send({
             type: "broadcast",
             event: "editor-change",
             payload: {
               doc: newState.doc.toJSON(),
+              markdown,
+              cursorPosition: cursorInfo.cursorPosition,
+              lineNumber: cursorInfo.lineNumber,
               timestamp: Date.now(),
             },
           });
@@ -317,6 +371,7 @@ export default function CollabEditor({
     });
 
     setEditorView(view);
+    editorViewRef.current = view;
 
     // Setup Realtime channel
     const channel = supabase.channel(channelName);
@@ -326,6 +381,21 @@ export default function CollabEditor({
         console.log("Received editor update from server:", payload);
         // Handle incoming updates if needed
         // For single-user editing, this might just be a confirmation
+      })
+      .on("broadcast", { event: "insert-text" }, (payload) => {
+        console.log("Received insert-text command from server:", payload);
+        
+        // Only process if there's no pending insertion
+        if (isPendingAcceptRef.current) {
+          console.log("Ignoring insert-text: already pending accept");
+          return;
+        }
+        
+        const { lineNumber, text } = payload.payload;
+        if (lineNumber && typeof lineNumber === 'number') {
+          console.log('insert text at paragraph', lineNumber, text);
+          insertTextAtParagraph(lineNumber, text || `Text inserted at line ${lineNumber}!`);
+        }
       })
       .subscribe((status) => {
         console.log(`Channel ${channelName} status:`, status);
@@ -346,8 +416,9 @@ export default function CollabEditor({
       if (view) {
         view.destroy();
       }
+      editorViewRef.current = null;
     };
-  }, [isHealthy, channelName, docId]);
+  }, [isHealthy, channelName, docId, insertTextAtParagraph]);
 
   return (
     <div className="collab-editor-container relative h-[calc(100vh-50px)] flex flex-col overflow-hidden">
@@ -365,7 +436,7 @@ export default function CollabEditor({
             )}
           </div>
           <button
-            onClick={insertTextAtParagraph6}
+            onClick={() => insertTextAtParagraph(6)}
             disabled={!editorView || isPendingAccept}
             className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
           >
