@@ -77,10 +77,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // Import and register routes
 import helloRoutes from "./api/hello/entry-points/api";
 import chatRoutes from "./api/chat/entry-points/api";
+import authRoutes from "./api/auth/entry-points/api";
 
 // Register API routes
 helloRoutes(app);
 chatRoutes(app);
+authRoutes(app);
 
 const server = app.listen(port, () => {
   console.log("Server started on port", port);

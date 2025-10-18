@@ -1,21 +1,12 @@
 "use client";
 
 import { SignUp } from "@/components/Auth";
-import { Suspense, useEffect } from "react";
+import { Suspense } from "react";
 import { motion } from "framer-motion";
 import { useAuthHook } from "@/components/Auth/useAuthHook";
-import { useRouter } from "next/navigation";
 
 export default function SignUpPage() {
-  const { session, isLoading } = useAuthHook();
-  const router = useRouter();
-
-  useEffect(() => {
-    // If not loading and user is authenticated, redirect to home
-    if (!isLoading && session) {
-      router.push('/');
-    }
-  }, [session, isLoading, router]);
+  const { isLoading } = useAuthHook(); 
 
   if (isLoading) {
     return (
@@ -26,10 +17,6 @@ export default function SignUpPage() {
         </div>
       </div>
     );
-  }
-
-  if (session) {
-    return null;
   }
 
   return (

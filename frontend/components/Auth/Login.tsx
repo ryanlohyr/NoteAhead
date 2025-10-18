@@ -6,6 +6,7 @@ import { useAuthStore } from "@/store/auth";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 
 export function Login() {
   const [email, setEmail] = useState("");
@@ -40,14 +41,31 @@ export function Login() {
       const success = await loginWithPassword(email, password);
 
       if (success) {
+        // Show success toast
+        toast.success("Welcome back!", {
+          description: "You have successfully logged in.",
+        });
+        
         // Login successful, redirect to main page
         router.push("/");
         router.refresh();
+      } else {
+        // Login failed - show error from store
+        const errorMessage = storeError || "Invalid email or password. Please try again.";
+        setError(errorMessage);
+        
+        toast.error("Login Failed", {
+          description: errorMessage,
+        });
       }
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : "An error occurred during login";
       setError(errorMessage);
+      
+      toast.error("Login Failed", {
+        description: errorMessage,
+      });
     } finally {
       setLoading(false);
     }

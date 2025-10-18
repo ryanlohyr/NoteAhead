@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/store/auth";
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 export function SignUp() {
   const [email, setEmail] = useState("");
@@ -13,7 +15,7 @@ export function SignUp() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const { signUp } = useAuthStore();
-
+  const router = useRouter();
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -32,15 +34,30 @@ export function SignUp() {
 
       if (!signUpSuccess) {
         console.error("error during sign up", signUpError);
+        const errorMessage =
+          signUpError instanceof Error ? signUpError.message : "Failed to create account. Please try again.";
+        
+        toast.error("Signup Failed", {
+          description: errorMessage,
+        });
+        
         throw signUpError;
       }
 
       // Clear the form fields
       setEmail("");
       setPassword("");
-      
+
       // Show success message
       setSuccess(true);
+      
+      // Show success toast
+      toast.success("Account Created!", {
+        description: "Please check your email to verify your account.",
+      });
+      
+      // Redirect to home page on successful signup (including database creation)
+      router.push("/");
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : "An error occurred during sign up";
@@ -109,4 +126,3 @@ export function SignUp() {
     </div>
   );
 }
-

@@ -3,6 +3,7 @@
 import "@/app/globals.css";
 import { QueryProvider } from "@/providers/QueryProvider";
 import { AuthProvider } from "@/components/Auth";
+import { Toaster } from "sonner";
 
 export default function RootLayout({
   children,
@@ -13,7 +14,10 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <QueryProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            {children}
+            <Toaster position="top-right" richColors />
+          </AuthProvider>
         </QueryProvider>
       </body>
     </html>

@@ -1,5 +1,6 @@
-import { Express, Router, Response } from "express";
-import { verifyAuth, AuthRequest } from "../../../middleware/auth";
+import { Express, Router, Request, Response } from "express";
+import { verifyAuth } from "../../../middleware/auth";
+import { AuthenticatedRequest } from "#shared/types";
 import { StreamTextRequestBody, StreamingEvent } from "../types";
 import { createChat, getChatById, saveMessage } from "../data_access";
 import { getChatStream } from "../use_cases/use-case";
@@ -12,13 +13,14 @@ function chatRoutes(app: Express) {
   router.use(verifyAuth);
 
   // POST /api/chat/stream-text - Stream chat responses with SSE
-  router.post("/stream-text", async (req: AuthRequest, res: Response) => {
+  router.post("/stream-text", async (req: Request, res: Response) => {
+    const authReq = req as AuthenticatedRequest;
     // Disable timeout for streaming - allow unlimited time
     req.setTimeout(0);
 
     try {
       const { message, chatId: providedChatId } = req.body as StreamTextRequestBody;
-      const userId = req.user?.id;
+      const userId = authReq.user?.id;
 
       if (!userId) {
         return res.status(401).json({

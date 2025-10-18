@@ -1,6 +1,7 @@
 import { environment } from "@/environments";
 import { createClient, Session, SupabaseClient } from "@supabase/supabase-js";
 import { create } from "zustand";
+import { authApi } from "@/query/authQuery";
 
 class AuthService {
   private supabase: SupabaseClient;
@@ -111,12 +112,32 @@ export const useAuthStore = create<AuthState>((set) => ({
       const { data, error } = await authService.signUp(email, password);
       if (error) throw error;
 
+      let dbCreationSuccess = false;
+
+      // After successful Supabase signup, create user in our database
+      if (data?.session?.access_token) {
+        try {
+          await authApi.createUser(data.session.access_token);
+          console.log("User created in database");
+          dbCreationSuccess = true;
+        } catch (dbError) {
+          console.error("Failed to create user in database:", dbError);
+          
+          // Return failure if database creation fails
+          return {
+            success: false,
+            error: dbError,
+          };
+        }
+      }
+
       return {
-        success: !!data?.user,
+        success: !!data?.user && dbCreationSuccess,
         error: error,
       };
     } catch (error: unknown) {
       console.error("error", error);
+      
       return {
         success: false,
         error: error,
@@ -133,6 +154,23 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (error) throw error;
 
       if (data?.user && data?.session) {
+        // Try to create user in database if they don't exist
+        // The backend will check if user exists and only create if needed
+        try {
+          await authApi.createUser(data.session.access_token);
+        } catch (dbError) {
+          console.error("Failed to ensure user exists in database:", dbError);
+          const errorMessage = dbError instanceof Error 
+            ? dbError.message 
+            : "Failed to initialize user account. Please try again or contact support.";
+          
+          // Sign out the user since we couldn't create their account
+          await authService.signOut();
+          
+          set({ error: errorMessage });
+          return false;
+        }
+
         set({
           user: {
             email: data.user.email || null,
@@ -141,6 +179,7 @@ export const useAuthStore = create<AuthState>((set) => ({
           },
           isAuthenticated: true,
         });
+        
         return true;
       }
       return false;
