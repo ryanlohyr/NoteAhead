@@ -1,4 +1,5 @@
 import {
+  jsonb,
   pgSchema,
   pgTable,
   text,
@@ -45,6 +46,19 @@ export const files = pgTable("files", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }).enableRLS();
 
+// Notes table
+export const notes = pgTable("notes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title").notNull(),
+  content: jsonb("content").notNull(),
+  userId: uuid("userId")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  folderId: uuid("folder_id"), // For future folder organization
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}).enableRLS();
+
 export const chunks = pgTable(
   "chunks",
   {
@@ -77,6 +91,7 @@ export const chunks = pgTable(
 export const schema = {
   accounts,
   files,
+  notes,
   chunks,
 };
 

@@ -59,6 +59,7 @@ import chatRoutes from "./api/chat/entry-points/api";
 import authRoutes from "./api/auth/entry-points/api";
 import collabRoutes from "./api/collab/entry-points/api";
 import filesRoutes from "./api/files/entry-points/api";
+import notesRoutes from "./api/notes/entry-points/api";
 
 // Register API routes
 helloRoutes(app);
@@ -66,6 +67,7 @@ chatRoutes(app);
 authRoutes(app);
 collabRoutes(app);
 filesRoutes(app);
+notesRoutes(app);
 
 export { app, port };
 

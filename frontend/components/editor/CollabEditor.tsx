@@ -14,14 +14,17 @@ import { commentPlugin, commentUI } from "@/lib/collab/comment";
 import { buildKeymap } from "@/lib/collab/keymap";
 import { buildInputRules } from "@/lib/collab/inputrules";
 import { FloatingMenu } from "./FloatingMenu";
+import { EditorTestControls } from "./EditorTestControls";
 import { supabase } from "@/lib/supabase";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useEditorInsertion } from "@/hooks/useEditorInsertion";
+import { useUpdateNote } from "@/query/notes";
 import "./CollabEditor.css";
 
 interface CollabEditorProps {
   docId: string;
   edgeFunctionUrl?: string;
+  initialDoc?: any; // ProseMirror JSON document
 }
 
 interface HealthCheckResponse {
@@ -36,7 +39,8 @@ export default function CollabEditor({
   docId, 
   edgeFunctionUrl = process.env.NEXT_PUBLIC_SUPABASE_URL 
     ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/collab-session`
-    : "http://localhost:54321/functions/v1/collab-session"
+    : "http://localhost:54321/functions/v1/collab-session",
+  initialDoc
 }: CollabEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -45,6 +49,8 @@ export default function CollabEditor({
   const [channelName, setChannelName] = useState<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const reportRef = useRef<Reporter>(new Reporter());
+  const hasUnsavedChanges = useRef<boolean>(false);
+  const updateNote = useUpdateNote();
   
   // Use the editor insertion hook
   const {
@@ -53,12 +59,7 @@ export default function CollabEditor({
     isPendingAccept,
     setIsPendingAccept,
     isPendingAcceptRef,
-  } = useEditorInsertion(editorViewRef);  
-  
-  // Test input states
-  const [testLineNumber, setTestLineNumber] = useState<string>("1");
-  const [testCursorPosition, setTestCursorPosition] = useState<string>("0");
-  const [testText, setTestText] = useState<string>("Hello world");
+  } = useEditorInsertion(editorViewRef);
 
   // Health check effect
   useEffect(() => {
@@ -269,14 +270,29 @@ export default function CollabEditor({
     });
 
     // Create initial editor state
-    const initialDoc = schema.node("doc", null, [
-      schema.node("paragraph", null, [
-        schema.text("Hey there, start editing your document..."),
-      ]),
-    ]);
+    let doc;
+    if (initialDoc) {
+      try {
+        // Parse the initial document from JSON if provided
+        doc = schema.nodeFromJSON(initialDoc);
+      } catch (error) {
+        console.error("Failed to parse initial document, using default:", error);
+        doc = schema.node("doc", null, [
+          schema.node("paragraph", null, [
+            schema.text("Hey there, start editing your document..."),
+          ]),
+        ]);
+      }
+    } else {
+      doc = schema.node("doc", null, [
+        schema.node("paragraph", null, [
+          schema.text("Hey there, start editing your document..."),
+        ]),
+      ]);
+    }
 
     const state = EditorState.create({
-      doc: initialDoc,
+      doc,
         plugins: [
           buildInputRules(), // Add markdown input rules (must be early in plugin order)
           placeholderValidationPlugin, // Validate placeholder range on document changes
@@ -376,6 +392,11 @@ export default function CollabEditor({
         const newState = view.state.apply(transaction);
         view.updateState(newState);
         
+        // Mark that we have unsaved changes
+        if (transaction.docChanged) {
+          hasUnsavedChanges.current = true;
+        }
+        
         // Broadcast changes to Realtime if there are doc changes and not pending accept
         if (transaction.docChanged && channelRef.current && !isPendingAcceptRef.current) {
           const cursorInfo = getCursorInfo(newState);
@@ -466,58 +487,45 @@ export default function CollabEditor({
     };
   }, [isHealthy, channelName, docId, insertTextAtParagraph, placeholderRangeRef, setIsPendingAccept, isPendingAcceptRef]);
 
+  // Auto-save effect - saves content every 5 seconds if there are changes
+  useEffect(() => {
+    const autoSaveInterval = setInterval(() => {
+      if (hasUnsavedChanges.current && editorViewRef.current) {
+        const currentDoc = editorViewRef.current.state.doc.toJSON();
+        
+        console.log("Auto-saving document...");
+        updateNote.mutate(
+          {
+            id: docId,
+            data: { content: currentDoc },
+          },
+          {
+            onSuccess: () => {
+              hasUnsavedChanges.current = false;
+              console.log("Document auto-saved successfully");
+            },
+            onError: (error) => {
+              console.error("Auto-save failed:", error);
+            },
+          }
+        );
+      }
+    }, 5000); // 5 seconds
+
+    return () => {
+      clearInterval(autoSaveInterval);
+    };
+  }, [docId, updateNote]);
+
   return (
     <div className="collab-editor-container relative h-[calc(100vh-50px)] flex flex-col overflow-hidden">
       <FloatingMenu view={editorView} />
       <div className="editor-info flex-shrink-0">
-        <h2 className="text-xl font-semibold mb-2">{docId}</h2>
-        <div className="text-sm text-gray-600 mb-2">
-          <div>
-            {isHealthy ? "Connected" : "Connecting..."}
-            {channelName && <span className="ml-2 text-xs text-gray-400">• {channelName}</span>}
-            {isPendingAccept && (
-              <span className="ml-2 text-xs text-orange-500 font-medium">
-                • Pending Accept (Tab to accept all)
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <input
-            type="number"
-            value={testLineNumber}
-            onChange={(e) => setTestLineNumber(e.target.value)}
-            placeholder="Line #"
-            className="w-20 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            min="1"
-          />
-          <input
-            type="number"
-            value={testCursorPosition}
-            onChange={(e) => setTestCursorPosition(e.target.value)}
-            placeholder="Cursor Pos"
-            className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            min="0"
-          />
-          <input
-            type="text"
-            value={testText}
-            onChange={(e) => setTestText(e.target.value)}
-            placeholder="Text to insert"
-            className="flex-1 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <button
-            onClick={() => {
-              const lineNum = parseInt(testLineNumber) || 1;
-              const cursorPos = testCursorPosition === '' ? undefined : parseInt(testCursorPosition);
-              insertTextAtParagraph(lineNum, cursorPos, testText);
-            }}
-            disabled={!editorView || isPendingAccept}
-            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-          >
-            Insert Text
-          </button>
-        </div>
+        <EditorTestControls 
+          editorView={editorView}
+          isPendingAccept={isPendingAccept}
+          insertTextAtParagraph={insertTextAtParagraph}
+        />
       </div>
       <div ref={editorRef} className="editor-content prose max-w-none flex-1 flex flex-col min-h-0" />
     </div>
