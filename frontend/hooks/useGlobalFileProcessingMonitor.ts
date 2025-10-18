@@ -22,7 +22,8 @@ export const useGlobalFileProcessingMonitor = () => {
   const queryClient = useQueryClient();
   const previousFilesRef = useRef<Set<string>>(new Set());
   const fileNamesRef = useRef<Map<string, string>>(new Map());
-  const { setFiles, setLoading } = useFileProcessingStore(); 
+  const { setFiles, setLoading } = useFileProcessingStore();
+
   
   // Query to get only files that are in_progress or failed for efficient monitoring
   const { data, isLoading } = useQuery({

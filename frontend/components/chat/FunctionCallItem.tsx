@@ -22,7 +22,7 @@ export const FunctionCallItem: React.FC<FunctionCallItemProps> = ({ functionCall
     if (functionCall.isCompleted) {
       return <Check className="w-4 h-4 text-green-500" />;
     } else if (functionCall.isInProgress) {
-      return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
+      return <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />;
     }
     return <Settings className="w-4 h-4 text-muted-foreground" />;
   };
@@ -39,7 +39,7 @@ export const FunctionCallItem: React.FC<FunctionCallItemProps> = ({ functionCall
   const getFunctionIcon = () => {
     switch (functionCall.name) {
       case "search_knowledge_base":
-        return <Search className="w-5 h-5 text-blue-600 dark:text-blue-400" />;
+        return <Search className="w-5 h-5 text-muted-foreground" />;
       case "addNumbers":
         return <Plus className="w-5 h-5 text-green-600 dark:text-green-400" />;
       default:
@@ -75,26 +75,26 @@ export const FunctionCallItem: React.FC<FunctionCallItemProps> = ({ functionCall
     switch (functionCall.name) {
       case "search_knowledge_base":
         return (
-          <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+          <div className="mt-3 p-3 bg-muted/30 rounded-lg border border-border">
             <div className="flex items-start gap-2">
-              <Search className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+              <Search className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
+                <div className="text-xs font-medium text-muted-foreground mb-1">
                   Search Query
                 </div>
-                <div className="text-sm text-blue-900 dark:text-blue-100 break-words">
+                <div className="text-sm text-foreground break-words">
                   {args.query as string || "No query provided"}
                 </div>
                 {args.type && Array.isArray(args.type) && args.type.length > 0 ? (
                   <div className="mt-2">
-                    <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
+                    <div className="text-xs font-medium text-muted-foreground mb-1">
                       Content Types
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {(args.type as string[]).map((type, i) => (
                         <span
                           key={i}
-                          className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 rounded"
+                          className="text-xs px-2 py-0.5 bg-muted border border-border rounded"
                         >
                           {type}
                         </span>
@@ -105,11 +105,11 @@ export const FunctionCallItem: React.FC<FunctionCallItemProps> = ({ functionCall
               </div>
             </div>
             {functionCall.result ? (
-              <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-800">
-                <div className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-1">
+              <div className="mt-3 pt-3 border-t border-border">
+                <div className="text-xs font-medium text-muted-foreground mb-1">
                   Results
                 </div>
-                <div className="text-xs text-blue-900 dark:text-blue-100">
+                <div className="text-xs text-foreground">
                   {Array.isArray(functionCall.result) 
                     ? `Found ${functionCall.result.length} relevant chunks`
                     : "Processing..."}
@@ -191,7 +191,7 @@ export const FunctionCallItem: React.FC<FunctionCallItemProps> = ({ functionCall
               functionCall.isCompleted
                 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
                 : functionCall.isInProgress
-                  ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                  ? "bg-muted text-foreground border border-border"
                   : "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400"
             )}
           >

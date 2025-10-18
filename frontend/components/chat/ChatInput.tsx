@@ -76,7 +76,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 disabled={!input.trim() || isLoading}
                 size="icon"
                 variant="ghost"
-                className="h-8 w-8 text-blue-400 hover:text-blue-500 transition-colors"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground transition-colors"
               >
                 {isLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

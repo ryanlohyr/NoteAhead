@@ -133,10 +133,10 @@ export const TextOverlay = ({
             className += "bg-amber-50/40 border border-amber-100/30";
           } else if (hoveredLine?.id === line.id) {
             // Regular hover state
-            className += "bg-blue-200/50 border border-blue-400";
+            className += "bg-muted/70 border border-border";
           } else {
             // Default hover state
-            className += "hover:bg-blue-100/30 hover:border hover:border-blue-300";
+            className += "hover:bg-muted/40 hover:border hover:border-border/70";
           }
 
           return (
@@ -176,7 +176,7 @@ export const TextOverlay = ({
       {/* Selection rectangle during drag */}
       {isSelecting && selectionStart && selectionEnd && (
         <div
-          className="absolute border-2 border-blue-500 bg-blue-200/20 pointer-events-none"
+          className="absolute border-2 border-foreground/50 bg-muted/30 pointer-events-none"
           style={{
             left: Math.min(selectionStart.x, selectionEnd.x),
             top: Math.min(selectionStart.y, selectionEnd.y),
@@ -334,7 +334,7 @@ export const TextOverlay = ({
                       >
                         <div className="relative">
                           <span className="text-lg">🖼️</span>
-                          <Info className="absolute -top-2 -right-2 h-3 w-3 text-blue-500" />
+                          <Info className="absolute -top-2 -right-2 h-3 w-3 text-muted-foreground" />
                         </div>
                         <div className="text-xs text-center leading-tight">
                           <div>Chat with</div>

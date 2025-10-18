@@ -21,7 +21,7 @@
 
 /* Placeholder text when editor is empty */
 .ProseMirror .is-editor-empty::before {
-  content: 'Write, press / for commands';
+  content: 'What are you thinking of today?';
   float: left;
   color: #adb5bd;
   pointer-events: none;
@@ -29,7 +29,7 @@
 }
 
 .ProseMirror p.is-editor-empty::before {
-  content: 'Write, press / for commands';
+  content: 'What are you thinking of today?';
   float: left;
   color: #adb5bd;
   pointer-events: none;
@@ -39,7 +39,7 @@
 /* Also handle when it's the only empty paragraph */
 .ProseMirror:empty::before,
 .ProseMirror > .is-editor-empty:only-child::before {
-  content: 'Write, press / for commands';
+  content: 'What are you thinking of today?';
   color: #adb5bd;
   pointer-events: none;
 }

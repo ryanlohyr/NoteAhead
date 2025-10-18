@@ -37,6 +37,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
     selectedFile.fileType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     selectedFile.fileType === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
+    console.log('isPDF', isPDF);
+    console.log('fileBlobUrl', fileBlobUrl);
+
   return (
     <div className="h-full flex flex-col w-full">
       {isPDF && fileBlobUrl ? (

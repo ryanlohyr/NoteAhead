@@ -39,7 +39,7 @@ export const ResizableWrapper = ({ children }: { children: React.ReactNode }) =>
               order={2}
               defaultSize={defaultSize}
               minSize={20}
-              maxSize={40}
+              maxSize={60}
               className="w-full overflow-hidden"
               style={{ minWidth: 0 }}
             >
