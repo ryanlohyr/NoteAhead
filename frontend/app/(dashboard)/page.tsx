@@ -3,7 +3,6 @@
 import { useHelloQuery } from "@/query/helloQuery";
 import { useRightSidebarStore } from "@/store/sidebar";
 import { PanelRightOpen } from "lucide-react";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 
 export default function Home() {
   const { data, isLoading, error } = useHelloQuery();
@@ -12,7 +11,6 @@ export default function Home() {
   return (
     <main className="flex min-h-screen flex-col p-6">
       <div className="flex items-center gap-4 mb-6">
-        <SidebarTrigger />
         <h1 className="text-2xl font-bold">Welcome to NoteAhead</h1>
       </div>
 

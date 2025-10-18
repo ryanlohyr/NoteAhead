@@ -77,12 +77,6 @@ export function SignUp() {
         </div>
       )}
 
-      {success && (
-        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-          An email has been sent to your email address. Please verify your account to continue.
-        </div>
-      )}
-
       <form onSubmit={handleSignUp}>
         <div className="mb-4">
           <label className="block text-sm font-medium mb-1" htmlFor="email">
