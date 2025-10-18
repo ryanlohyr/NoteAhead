@@ -4,10 +4,13 @@ import { ResizableWrapper } from "@/components/ResizableWrapper";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import type { Metadata } from "next";
+import { getFaviconMetadata } from "@/utils/favicon";
+import { getMetadataTitle, getMetadataDescription } from "@/utils/metadata";
 
 export const metadata: Metadata = {
-  title: "NoteAhead",
-  description: "Your note-taking application",
+  title: getMetadataTitle(),
+  description: getMetadataDescription(),
+  icons: getFaviconMetadata(),
 };
 
 export default function RootLayout({
