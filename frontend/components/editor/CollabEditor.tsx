@@ -157,7 +157,23 @@ export default function CollabEditor({
         placeholderRangeRef.current = null; // Clear the reference
         setIsPendingAccept(false); // Clear pending state
         isPendingAcceptRef.current = false;
+        // After accepting placeholder text, convert any markdown links
+        if (editorViewRef.current) {
+          const convertTr = convertMarkdownLinksInDocument(editorViewRef.current.state);
+          if (convertTr) {
+            editorViewRef.current.dispatch(convertTr);
+          }
+        }
         return true;
+      }
+
+      // If no placeholder handling occurred, still attempt markdown link conversion on Tab
+      if (editorViewRef.current) {
+        const convertTr = convertMarkdownLinksInDocument(editorViewRef.current.state);
+        if (convertTr) {
+          editorViewRef.current.dispatch(convertTr);
+          return true;
+        }
       }
 
       return false;
@@ -318,6 +334,25 @@ export default function CollabEditor({
       },
     });
 
+    // Plugin to handle Ctrl key to trigger the same behavior as Tab
+    const ctrlKeyPlugin = new Plugin({
+      key: new PluginKey("ctrlKeyHandler"),
+      props: {
+        handleKeyDown(view, event) {
+          if (
+            event.key === "Control" &&
+            !event.metaKey &&
+            !event.shiftKey &&
+            !event.altKey
+          ) {
+            // Reuse Tab handler logic
+            return handleTab(view.state, (tr: Transaction) => view.dispatch(tr));
+          }
+          return false;
+        },
+      },
+    });
+
     // Create initial editor state
     let doc;
     if (initialDoc) {
@@ -339,6 +374,7 @@ export default function CollabEditor({
         placeholderValidationPlugin, // Validate placeholder range on document changes
         placeholderClassPlugin, // Add placeholder class to empty paragraphs
         placeholderInputPlugin, // Add placeholder input handler
+        ctrlKeyPlugin, // Handle Ctrl key as action trigger
         filePageLinkPlugin({
           scrollToPageRef,
           isRightOpen,
@@ -579,7 +615,7 @@ export default function CollabEditor({
     openRight,
     setLeftSidebarOpen,
     setActiveView,
-    selectFile,
+    selectFile
   ]);
 
   // Auto-save effect - saves content every 5 seconds if there are changes

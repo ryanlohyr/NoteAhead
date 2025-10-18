@@ -33,6 +33,12 @@ export function convertMarkdownLinksInDocument(state: EditorState): Transaction 
         const from = pos + start;
         const to = pos + end;
 
+        // Skip converting if any part of this range has the placeholder mark
+        if (state.doc.rangeHasMark(from, to, schema.marks.placeholder)) {
+          console.log('⏭️ Skipping markdown link conversion inside placeholder range', { from, to });
+          continue;
+        }
+
         console.log('🔄 Converting markdown link:', { linkText, url, from, to });
 
         // Delete the markdown syntax
