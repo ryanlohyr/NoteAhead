@@ -84,16 +84,5 @@ helloRoutes(app);
 chatRoutes(app);
 authRoutes(app);
 
-const server = app.listen(port, () => {
-  console.log("Server started on port", port);
-});
-
-// Set server-level timeouts to forcefully close connections
-server.requestTimeout = 30_000; // 30 seconds - max time for entire request/response cycle
-server.headersTimeout = 30_000; // 30 seconds - time to receive headers (should be >= requestTimeout)
-server.keepAliveTimeout = 5000; // 5 seconds - how long to keep idle connections open
-
-server.setTimeout(20_000, (socket) => {
-  socket.destroy();
-});
+export { app, port };
 
