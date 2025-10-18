@@ -6,12 +6,15 @@ import { Upload, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FileUploadModal } from "@/components/FileUploadModal";
 import { FileGrid } from "@/components/FileGrid";
+import { FileViewer } from "@/components/FileViewer";
 import { useDragAndDrop } from "@/hooks/useDragAndDrop";
 import {
   useGetAllFiles,
   useDeleteFile,
   uploadFile,
   useBatchCreateFiles,
+  downloadFileBlob,
+  FileItem,
 } from "@/query/files";
 import pLimit from "p-limit";
 
@@ -21,6 +24,11 @@ export default function FilesPage() {
   const [fileDescription, setFileDescription] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // File viewer state
+  const [viewingFile, setViewingFile] = useState<FileItem | null>(null);
+  const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
+  const [isLoadingFileContent, setIsLoadingFileContent] = useState(false);
 
   const { data, isLoading } = useGetAllFiles();
   const deleteFileMutation = useDeleteFile();
@@ -233,6 +241,56 @@ export default function FilesPage() {
     }
   };
 
+  // Handle file click to view
+  const handleFileClick = async (file: FileItem) => {
+    try {
+      setViewingFile(file);
+      setIsLoadingFileContent(true);
+
+      // Download file blob
+      const blob = await downloadFileBlob(file.id);
+      const blobUrl = URL.createObjectURL(blob);
+      
+      setFileBlobUrl(blobUrl);
+    } catch (error) {
+      console.error("Error opening file:", error);
+      toast.error("Failed to open file", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+      setViewingFile(null);
+    } finally {
+      setIsLoadingFileContent(false);
+    }
+  };
+
+  // Handle file viewer close
+  const handleCloseViewer = () => {
+    if (fileBlobUrl) {
+      URL.revokeObjectURL(fileBlobUrl);
+    }
+    setFileBlobUrl(null);
+    setViewingFile(null);
+  };
+
+  // Handle file download
+  const handleDownloadFile = async (file: FileItem) => {
+    try {
+      const blob = await downloadFileBlob(file.id);
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = file.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+      toast.success("Download started");
+    } catch (error) {
+      console.error("Error downloading file:", error);
+      toast.error("Failed to download file");
+    }
+  };
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {isDragging && (
@@ -279,6 +337,7 @@ export default function FilesPage() {
           files={data?.files || []}
           isLoading={isLoading}
           onDelete={handleDeleteFile}
+          onFileClick={handleFileClick}
         />
       </div>
 
@@ -302,6 +361,17 @@ export default function FilesPage() {
         }}
         dragProps={dragProps}
       />
+
+      {/* File Viewer */}
+      {viewingFile && (
+        <FileViewer
+          selectedFile={viewingFile}
+          fileBlobUrl={fileBlobUrl}
+          isLoadingContent={isLoadingFileContent}
+          onClose={handleCloseViewer}
+          onDownload={handleDownloadFile}
+        />
+      )}
     </div>
   );
 }

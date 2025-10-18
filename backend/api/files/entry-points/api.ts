@@ -7,6 +7,7 @@ import {
   createFileUseCase,
   batchCreateFilesUseCase,
   deleteFileUseCase,
+  downloadFileUseCase,
 } from "#use-case/files/files.js";
 
 export default function filesRoutes(app: Express) {
@@ -226,6 +227,50 @@ export default function filesRoutes(app: Express) {
     } catch (error) {
       console.error("Error deleting file:", error);
       res.status(500).json({ success: false, error: "Failed to delete file" });
+    }
+  });
+
+  // Download a file blob
+  router.get("/:id/download", async (req: Request, res: Response) => {
+    try {
+      const authReq = req as AuthenticatedRequest;
+      const userId = authReq.user?.id;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: "User not authenticated",
+        });
+      }
+
+      const { id } = req.params;
+
+      const { blob, fileName, mimeType } = await downloadFileUseCase(id, userId);
+
+      if (!blob) {
+        return res.status(404).json({ success: false, error: "File not found" });
+      }
+
+      // Sanitize filename to remove invalid characters for HTTP headers
+      // Remove or replace characters that are invalid in HTTP headers
+      const sanitizedFileName = fileName
+        .replace(/[^\x20-\x7E]/g, '') // Remove non-printable ASCII characters
+        .replace(/"/g, '\\"'); // Escape quotes
+
+      // Set appropriate headers for file download
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader("Content-Disposition", `inline; filename="${sanitizedFileName}"`);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+      );
+      
+      // Convert blob buffer to stream and pipe to response
+      res.send(blob);
+    } catch (error) {
+      console.error("Error downloading file:", error);
+      res.status(500).json({ success: false, error: "Failed to download file" });
     }
   });
 

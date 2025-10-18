@@ -6,6 +6,7 @@ interface FileGridProps {
   files: FileItem[];
   isLoading: boolean;
   onDelete: (id: string) => void;
+  onFileClick: (file: FileItem) => void;
 }
 
 const getFileIcon = (fileType?: string) => {
@@ -48,7 +49,7 @@ const getStatusBadge = (status?: FileItem["status"]) => {
   );
 };
 
-export const FileGrid: React.FC<FileGridProps> = ({ files, isLoading, onDelete }) => {
+export const FileGrid: React.FC<FileGridProps> = ({ files, isLoading, onDelete, onFileClick }) => {
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -85,7 +86,8 @@ export const FileGrid: React.FC<FileGridProps> = ({ files, isLoading, onDelete }
       {files.map((file) => (
         <div
           key={file.id}
-          className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow bg-white dark:bg-gray-800"
+          className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow bg-white dark:bg-gray-800 cursor-pointer"
+          onClick={() => onFileClick(file)}
         >
           <div className="flex items-start justify-between mb-3">
             {getFileIcon(file.fileType)}
@@ -94,7 +96,10 @@ export const FileGrid: React.FC<FileGridProps> = ({ files, isLoading, onDelete }
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => onDelete(file.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(file.id);
+                }}
                 className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
               >
                 <Trash2 className="h-4 w-4" />

@@ -85,6 +85,18 @@ export const fileApi = {
     });
     return data;
   },
+
+  /**
+   * Download file blob from storage
+   */
+  downloadFileBlob: async (fileId: string): Promise<Blob> => {
+    const url = makeApiUrl(`/api/files/${fileId}/download`);
+    const blob = await fetchWrapper<Blob>(url, {
+      method: "GET",
+      responseType: "blob",
+    });
+    return blob;
+  },
 };
 
 /**
@@ -177,6 +189,11 @@ export const useDeleteFile = () => {
     },
   });
 };
+
+/**
+ * Export downloadFileBlob for direct use
+ */
+export const downloadFileBlob = fileApi.downloadFileBlob;
 
 /**
  * Toast update options type
