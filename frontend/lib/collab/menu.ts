@@ -10,7 +10,18 @@ import { MarkType, NodeType } from "prosemirror-model";
 function markActive(state: EditorState, type: MarkType) {
   const { from, $from, to, empty } = state.selection;
   if (empty) return !!type.isInSet(state.storedMarks || $from.marks());
-  return state.doc.rangeHasMark(from, to, type);
+  
+  // Validate positions are within document bounds
+  const docSize = state.doc.content.size;
+  const validFrom = Math.max(0, Math.min(from, docSize));
+  const validTo = Math.max(validFrom, Math.min(to, docSize));
+  
+  // If positions are invalid, return false
+  if (validFrom >= validTo || validFrom < 0 || validTo > docSize) {
+    return false;
+  }
+  
+  return state.doc.rangeHasMark(validFrom, validTo, type);
 }
 
 // Helper function to check if a block is active

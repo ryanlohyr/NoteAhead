@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { EditorState, Transaction, TextSelection, Plugin, PluginKey } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { history } from "prosemirror-history";
@@ -17,6 +17,8 @@ import { buildKeymap } from "@/lib/collab/keymap";
 import { FloatingMenu } from "./FloatingMenu";
 import { supabase } from "@/lib/supabase";
 import type { RealtimeChannel } from "@supabase/supabase-js";
+import { useEditorInsertion } from "@/hooks/useEditorInsertion";
+import "./CollabEditor.css";
 
 interface CollabEditorProps {
   docId: string;
@@ -44,69 +46,20 @@ export default function CollabEditor({
   const [channelName, setChannelName] = useState<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const reportRef = useRef<Reporter>(new Reporter());
-  const placeholderRangeRef = useRef<{ from: number; to: number } | null>(null);
-  const [isPendingAccept, setIsPendingAccept] = useState<boolean>(false);
-  const isPendingAcceptRef = useRef<boolean>(false);
-
-  // Function to insert text at a specific line number
-  const insertTextAtParagraph = useCallback((lineNumber: number, textToInsert: string = `Text inserted at line ${lineNumber}!`) => {
-    const editorView = editorViewRef.current;
-    if (!editorView) return;
-
-    let targetPos = 0;
-    let paragraphCount = 0;
-    let lastParagraphPos = 0;
-    
-    // Count paragraphs and track positions
-    editorView.state.doc.descendants((node, pos) => {
-      if (node.type.name === 'paragraph') {
-        paragraphCount++;
-        lastParagraphPos = pos + node.nodeSize;
-        if (paragraphCount === lineNumber) {
-          targetPos = pos + node.nodeSize;
-          return false; // stop iterating
-        }
-      }
-    });
-    
-    let transaction = editorView.state.tr;
-    
-    // If we have fewer paragraphs than needed, create the missing ones
-    if (paragraphCount < lineNumber) {
-      const paragraphsNeeded = lineNumber - paragraphCount;
-      const insertPos = lastParagraphPos || editorView.state.doc.content.size;
-      
-      // Create empty paragraphs
-      for (let i = 0; i < paragraphsNeeded; i++) {
-        const emptyParagraph = schema.node('paragraph');
-        transaction = transaction.insert(insertPos + (i * 2), emptyParagraph);
-      }
-      
-      // Calculate position of the target paragraph after insertion
-      // Each paragraph node takes 2 positions (opening + closing)
-      targetPos = insertPos + (paragraphsNeeded * 2) - 1;
-    }
-    
-    // Insert the text with placeholder mark at the target paragraph
-    const placeholderMark = schema.marks.placeholder.create();
-    
-    transaction = transaction.insert(
-      targetPos,
-      schema.text(textToInsert, [placeholderMark])
-    );
-    
-    // Store the range of the placeholder text
-    placeholderRangeRef.current = {
-      from: targetPos,
-      to: targetPos + textToInsert.length,
-    };
-    
-    // Set pending accept state to true
-    setIsPendingAccept(true);
-    isPendingAcceptRef.current = true;
-    
-    editorView.dispatch(transaction);
-  }, []);
+  
+  // Use the editor insertion hook
+  const {
+    insertTextAtParagraph,
+    placeholderRangeRef,
+    isPendingAccept,
+    setIsPendingAccept,
+    isPendingAcceptRef,
+  } = useEditorInsertion(editorViewRef);
+  
+  // Test input states
+  const [testLineNumber, setTestLineNumber] = useState<string>("1");
+  const [testCursorPosition, setTestCursorPosition] = useState<string>("0");
+  const [testText, setTestText] = useState<string>("Hello world");
 
   // Health check effect
   useEffect(() => {
@@ -137,8 +90,6 @@ export default function CollabEditor({
         }
 
         const data: HealthCheckResponse = await response.json();
-
-        console.log('data test', data);
         
         if (data.status === "healthy") {
           setIsHealthy(true);
@@ -168,13 +119,27 @@ export default function CollabEditor({
 
       const { from, to } = placeholderRange;
       
+      // Validate and clamp positions to valid range
+      const docSize = state.doc.content.size;
+      const validFrom = Math.max(0, Math.min(from, docSize));
+      const validTo = Math.max(validFrom, Math.min(to, docSize));
+      
+      if (validFrom >= validTo || validFrom < 0) {
+        // Invalid range, clear it
+        placeholderRangeRef.current = null;
+        setIsPendingAccept(false);
+        isPendingAcceptRef.current = false;
+        return false;
+      }
+      
       // Check if there's placeholder text in the document
-      const hasMark = state.doc.rangeHasMark(from, to, schema.marks.placeholder);
+      const hasMark = state.doc.rangeHasMark(validFrom, validTo, schema.marks.placeholder);
       
       if (hasMark && dispatch) {
-        let tr = state.tr.removeMark(from, to, schema.marks.placeholder);
+        let tr = state.tr.removeMark(validFrom, validTo, schema.marks.placeholder);
         // Use the transaction's document to create the selection
-        tr =               tr.setSelection(TextSelection.create(tr.doc, to));
+        const safeSelectionPos = Math.min(validTo, tr.doc.content.size);
+        tr = tr.setSelection(TextSelection.create(tr.doc, safeSelectionPos));
         dispatch(tr);
         placeholderRangeRef.current = null; // Clear the reference
         setIsPendingAccept(false); // Clear pending state
@@ -184,6 +149,28 @@ export default function CollabEditor({
       
       return false;
     };
+
+    // Plugin to validate placeholder range on every document change
+    const placeholderValidationPlugin = new Plugin({
+      key: new PluginKey("placeholderValidation"),
+      appendTransaction(transactions, oldState, newState) {
+        const placeholderRange = placeholderRangeRef.current;
+        if (!placeholderRange) return null;
+        
+        const { from, to } = placeholderRange;
+        const docSize = newState.doc.content.size;
+        
+        // Check if the range is now invalid
+        if (from < 0 || to > docSize || from >= to) {
+          console.warn('Clearing invalid placeholder range', { from, to, docSize });
+          placeholderRangeRef.current = null;
+          setIsPendingAccept(false);
+          isPendingAcceptRef.current = false;
+        }
+        
+        return null; // Don't modify the transaction
+      }
+    });
 
     // Plugin to handle autocomplete-like behavior for placeholder text
     const placeholderInputPlugin = new Plugin({
@@ -195,14 +182,37 @@ export default function CollabEditor({
 
           const { from: placeholderFrom, to: placeholderTo } = placeholderRange;
 
+          // Validate and clamp placeholder range to document bounds
+          const docSize = view.state.doc.content.size;
+          const validFrom = Math.max(0, Math.min(placeholderFrom, docSize));
+          const validTo = Math.max(validFrom, Math.min(placeholderTo, docSize));
+          
+          if (validFrom >= validTo || validFrom < 0 || validTo > docSize) {
+            // Invalid range, clear it
+            placeholderRangeRef.current = null;
+            setIsPendingAccept(false);
+            isPendingAcceptRef.current = false;
+            return false;
+          }
+
           // Check if we're at the start or within the placeholder
-          if (from >= placeholderFrom && from <= placeholderTo) {
-            // Get the placeholder text
-            const placeholderText = view.state.doc.textBetween(placeholderFrom, placeholderTo);
+          if (from >= validFrom && from <= validTo) {
+            // Get the placeholder text (using validated positions)
+            const placeholderText = view.state.doc.textBetween(validFrom, validTo);
             
             // Get the position within the placeholder text
-            const posInPlaceholder = from - placeholderFrom;
+            const posInPlaceholder = from - validFrom;
             const expectedChar = placeholderText[posInPlaceholder];
+
+            // If we're beyond the placeholder text length, delete it
+            if (expectedChar === undefined) {
+              const tr = view.state.tr.delete(validFrom, validTo);
+              view.dispatch(tr);
+              placeholderRangeRef.current = null;
+              setIsPendingAccept(false);
+              isPendingAcceptRef.current = false;
+              return false;
+            }
 
             // Normalize spaces: treat regular space (32) and non-breaking space (160) as equal
             const normalizeChar = (char: string) => {
@@ -223,17 +233,18 @@ export default function CollabEditor({
                 schema.marks.placeholder
               );
               // Move cursor forward
-              tr.setSelection(TextSelection.create(tr.doc, from + 1));
+              const nextPos = Math.min(from + 1, tr.doc.content.size);
+              tr.setSelection(TextSelection.create(tr.doc, nextPos));
               view.dispatch(tr);
               
               // Update the placeholder range to reflect the new start position
               placeholderRangeRef.current = {
                 from: from + 1,
-                to: placeholderTo,
+                to: validTo,
               };
               
               // If we've accepted the whole text, clear the reference and pending state
-              if (from + 1 >= placeholderTo) {
+              if (from + 1 >= validTo) {
                 placeholderRangeRef.current = null;
                 setIsPendingAccept(false);
                 isPendingAcceptRef.current = false;
@@ -242,7 +253,7 @@ export default function CollabEditor({
               return true;
             } else {
               // Character doesn't match! Delete the entire placeholder
-              const tr = view.state.tr.delete(placeholderFrom, placeholderTo);
+              const tr = view.state.tr.delete(validFrom, validTo);
               view.dispatch(tr);
               placeholderRangeRef.current = null;
               setIsPendingAccept(false); // Clear pending state
@@ -261,13 +272,14 @@ export default function CollabEditor({
     // Create initial editor state
     const initialDoc = schema.node("doc", null, [
       schema.node("paragraph", null, [
-        schema.text("Start editing your document..."),
+        schema.text("Hey there, start editing your document..."),
       ]),
     ]);
 
     const state = EditorState.create({
       doc: initialDoc,
         plugins: [
+          placeholderValidationPlugin, // Validate placeholder range on document changes
           placeholderInputPlugin, // Add placeholder input handler
           buildKeymap(),
           keymap({
@@ -303,18 +315,39 @@ export default function CollabEditor({
     // Helper function to get cursor position and line number
     const getCursorInfo = (state: EditorState) => {
       const { from } = state.selection;
-      let lineNumber = 0;
+      let currentLineNumber = 0;
+      let cursorLineNumber = 0;
+      let isAtEndOfLine = false;
+      let cursorPositionInLine = 0;
+      let found = false;
       
       state.doc.descendants((node, pos) => {
+        if (found) return false; // Stop if already found
+        
         if (node.type.name === 'paragraph') {
-          lineNumber++;
-          if (pos + node.nodeSize >= from) {
-            return false; // stop iterating
+          currentLineNumber++;
+          const paragraphStart = pos + 1; // +1 to skip opening tag
+          const paragraphEnd = pos + node.nodeSize - 1; // -1 to exclude closing tag
+          
+          // Check if cursor is within this paragraph
+          if (from >= paragraphStart && from <= paragraphEnd) {
+            cursorLineNumber = currentLineNumber;
+            // Check if cursor is at the end of this paragraph
+            isAtEndOfLine = from === paragraphEnd;
+            // Calculate position within this line
+            cursorPositionInLine = from - paragraphStart;
+            found = true;
+            return false; // stop descending into children
           }
         }
       });
       
-      return { cursorPosition: from, lineNumber };
+      return { 
+        cursorPosition: from, 
+        lineNumber: cursorLineNumber, 
+        isAtEndOfLine,
+        cursorPositionInLine,
+      };
     };
 
     // Helper function to convert doc to markdown
@@ -348,13 +381,20 @@ export default function CollabEditor({
         if (transaction.docChanged && channelRef.current && !isPendingAcceptRef.current) {
           const cursorInfo = getCursorInfo(newState);
           const markdown = docToMarkdown(newState);
-          
-          console.log("Broadcasting editor change to Realtime", {
+
+          console.log('broadcasting editor change', {
+            cursorInfo,
+            markdown,
+            cursorCurrentLine: cursorInfo.lineNumber,
+            cursorPositionAtCurrentLine: cursorInfo.cursorPositionInLine,
+            isAtEndOfLine: cursorInfo.isAtEndOfLine,
             cursorPosition: cursorInfo.cursorPosition,
             lineNumber: cursorInfo.lineNumber,
-            markdown: markdown.substring(0, 50) + '...',
+            isAtEndOfLine: cursorInfo.isAtEndOfLine,
+            cursorCurrentLine: cursorInfo.lineNumber,
+            cursorPositionAtCurrentLine: cursorInfo.cursorPositionInLine,
+            timestamp: Date.now(),
           });
-
           channelRef.current.send({
             type: "broadcast",
             event: "editor-change",
@@ -363,6 +403,9 @@ export default function CollabEditor({
               markdown,
               cursorPosition: cursorInfo.cursorPosition,
               lineNumber: cursorInfo.lineNumber,
+              isAtEndOfLine: cursorInfo.isAtEndOfLine,
+              cursorCurrentLine: cursorInfo.lineNumber,
+              cursorPositionAtCurrentLine: cursorInfo.cursorPositionInLine,
               timestamp: Date.now(),
             },
           });
@@ -391,10 +434,14 @@ export default function CollabEditor({
           return;
         }
         
-        const { lineNumber, text } = payload.payload;
+        const { lineNumber, cursorPosition, text } = payload.payload;
         if (lineNumber && typeof lineNumber === 'number') {
-          console.log('insert text at paragraph', lineNumber, text);
-          insertTextAtParagraph(lineNumber, text || `Text inserted at line ${lineNumber}!`);
+          console.log('insert text at paragraph', lineNumber, cursorPosition, text);
+          insertTextAtParagraph(
+            lineNumber, 
+            cursorPosition !== undefined ? cursorPosition : undefined,
+            text || `Text inserted at line ${lineNumber}!`
+          );
         }
       })
       .subscribe((status) => {
@@ -418,14 +465,14 @@ export default function CollabEditor({
       }
       editorViewRef.current = null;
     };
-  }, [isHealthy, channelName, docId, insertTextAtParagraph]);
+  }, [isHealthy, channelName, docId, insertTextAtParagraph, placeholderRangeRef, setIsPendingAccept, isPendingAcceptRef]);
 
   return (
     <div className="collab-editor-container relative h-[calc(100vh-50px)] flex flex-col overflow-hidden">
       <FloatingMenu view={editorView} />
       <div className="editor-info flex-shrink-0">
         <h2 className="text-xl font-semibold mb-2">{docId}</h2>
-        <div className="text-sm text-gray-600 flex items-center gap-4">
+        <div className="text-sm text-gray-600 mb-2">
           <div>
             {isHealthy ? "Connected" : "Connecting..."}
             {channelName && <span className="ml-2 text-xs text-gray-400">• {channelName}</span>}
@@ -435,261 +482,45 @@ export default function CollabEditor({
               </span>
             )}
           </div>
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          <input
+            type="number"
+            value={testLineNumber}
+            onChange={(e) => setTestLineNumber(e.target.value)}
+            placeholder="Line #"
+            className="w-20 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            min="1"
+          />
+          <input
+            type="number"
+            value={testCursorPosition}
+            onChange={(e) => setTestCursorPosition(e.target.value)}
+            placeholder="Cursor Pos"
+            className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            min="0"
+          />
+          <input
+            type="text"
+            value={testText}
+            onChange={(e) => setTestText(e.target.value)}
+            placeholder="Text to insert"
+            className="flex-1 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
           <button
-            onClick={() => insertTextAtParagraph(6)}
+            onClick={() => {
+              const lineNum = parseInt(testLineNumber) || 1;
+              const cursorPos = testCursorPosition === '' ? undefined : parseInt(testCursorPosition);
+              insertTextAtParagraph(lineNum, cursorPos, testText);
+            }}
             disabled={!editorView || isPendingAccept}
-            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
           >
-            Insert Text at Line 6
+            Insert Text
           </button>
         </div>
       </div>
       <div ref={editorRef} className="editor-content prose max-w-none flex-1 flex flex-col min-h-0" />
-      <style jsx global>{`
-        .editor-content {
-          overflow: hidden;
-        }
-
-        .editor-content > div {
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .ProseMirror {
-          flex: 1;
-          min-height: 0;
-          padding: 1rem;
-          border: 1px solid #ddd;
-          border-radius: 0 0 4px 4px;
-          outline: none;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          line-height: 1.6;
-          overflow-y: auto;
-        }
-
-        .ProseMirror-focused {
-          border-color: #4a90e2;
-        }
-
-        /* Text formatting styles */
-        .ProseMirror u {
-          text-decoration: underline;
-        }
-
-        .ProseMirror s {
-          text-decoration: line-through;
-        }
-
-        .ProseMirror mark {
-          background-color: yellow;
-          padding: 0 2px;
-        }
-
-        .ProseMirror sub {
-          vertical-align: sub;
-          font-size: smaller;
-        }
-
-        .ProseMirror sup {
-          vertical-align: super;
-          font-size: smaller;
-        }
-
-        .ProseMirror strong {
-          font-weight: bold;
-        }
-
-        .ProseMirror em {
-          font-style: italic;
-        }
-
-        .ProseMirror code {
-          font-family: monospace;
-          background-color: #f5f5f5;
-          padding: 2px 4px;
-          border-radius: 3px;
-        }
-
-        .ProseMirror .placeholder-text {
-          color: #999;
-          opacity: 0.7;
-        }
-
-        .ProseMirror pre {
-          background-color: #f5f5f5;
-          padding: 1rem;
-          border-radius: 4px;
-          overflow-x: auto;
-        }
-
-        .ProseMirror blockquote {
-          border-left: 4px solid #ddd;
-          padding-left: 1rem;
-          margin-left: 0;
-          color: #666;
-        }
-
-        .comment {
-          background-color: #fffacd;
-          border-bottom: 2px solid #ffd700;
-        }
-
-        .tooltip-wrapper {
-          position: absolute;
-          background: white;
-          border: 1px solid #ddd;
-          border-radius: 4px;
-          padding: 0.5rem;
-          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-          z-index: 1000;
-        }
-
-        .commentList {
-          list-style: none;
-          padding: 0;
-          margin: 0;
-        }
-
-        .commentText {
-          padding: 0.5rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .commentDelete {
-          background: #ff4444;
-          color: white;
-          border: none;
-          border-radius: 3px;
-          padding: 0.25rem 0.5rem;
-          cursor: pointer;
-          margin-left: 0.5rem;
-        }
-
-        .commentDelete:hover {
-          background: #cc0000;
-        }
-
-        .ProseMirror-report {
-          position: fixed;
-          top: 1rem;
-          right: 1rem;
-          padding: 0.5rem 1rem;
-          border-radius: 4px;
-          z-index: 10000;
-        }
-
-        .ProseMirror-report-fail {
-          background-color: #ff4444;
-          color: white;
-        }
-
-        .ProseMirror-report-delay {
-          background-color: #ffa500;
-          color: white;
-        }
-
-        /* Enhanced Menu Bar Styles */
-        .ProseMirror-menubar {
-          border: 1px solid #ddd;
-          border-bottom: none;
-          border-radius: 4px 4px 0 0;
-          padding: 0.5rem;
-          background: linear-gradient(to bottom, #ffffff, #f9f9f9);
-          display: flex;
-          flex-wrap: wrap;
-          gap: 0.5rem;
-        }
-
-        .ProseMirror-menubar .ProseMirror-menuitem {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          min-width: 32px;
-          height: 32px;
-          padding: 0.25rem 0.5rem;
-          cursor: pointer;
-          border: 1px solid transparent;
-          border-radius: 4px;
-          background: white;
-          transition: all 0.2s;
-          font-size: 14px;
-        }
-
-        .ProseMirror-menubar .ProseMirror-menuitem:hover:not([disabled]) {
-          background: #e9ecef;
-          border-color: #ddd;
-        }
-
-        .ProseMirror-menubar .ProseMirror-menuitem.ProseMirror-menu-active {
-          background: #4a90e2;
-          color: white;
-          border-color: #4a90e2;
-        }
-
-        .ProseMirror-menubar .ProseMirror-menuitem[disabled] {
-          opacity: 0.4;
-          cursor: not-allowed;
-        }
-
-        /* Custom styling for menu item labels */
-        .menu-item-bold { font-weight: bold; }
-        .menu-item-italic { font-style: italic; }
-        .menu-item-underline { text-decoration: underline; }
-        .menu-item-strikethrough { text-decoration: line-through; }
-        .menu-item-highlight { background: yellow; }
-        .menu-item-code { font-family: monospace; }
-        .menu-item-code-block { font-family: monospace; }
-        .menu-item-heading-1 { font-weight: bold; font-size: 16px; }
-        .menu-item-heading-2 { font-weight: bold; font-size: 14px; }
-        .menu-item-heading-3 { font-weight: bold; font-size: 12px; }
-        .menu-item-blockquote { font-size: 18px; }
-        .menu-item-undo { font-size: 18px; }
-        .menu-item-redo { font-size: 18px; }
-
-        /* Dropdown and separator */
-        .ProseMirror-menuseparator {
-          border-left: 1px solid #ddd;
-          margin: 0 0.25rem;
-        }
-
-        /* Gap cursor */
-        .ProseMirror-gapcursor {
-          display: none;
-          pointer-events: none;
-          position: absolute;
-        }
-
-        .ProseMirror-gapcursor:after {
-          content: "";
-          display: block;
-          position: absolute;
-          top: -2px;
-          width: 20px;
-          border-top: 1px solid black;
-          animation: ProseMirror-cursor-blink 1.1s steps(2, start) infinite;
-        }
-
-        @keyframes ProseMirror-cursor-blink {
-          to {
-            visibility: hidden;
-          }
-        }
-
-        .ProseMirror-focused .ProseMirror-gapcursor {
-          display: block;
-        }
-
-        /* Drop cursor */
-        .ProseMirror-dropcursor {
-          position: absolute;
-          pointer-events: none;
-          border-left: 2px solid #4a90e2;
-          height: 1.2em;
-        }
-      `}</style>
     </div>
   );
 }

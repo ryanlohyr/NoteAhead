@@ -11,93 +11,111 @@ console.log("Collab Session Edge Function initialized");
 // Store active channels globally for cleanup
 const activeChannels = new Map<string, RealtimeChannel>();
 
-// Type definitions for ProseMirror document structure
-interface TextNode {
-  type: string;
-  text?: string;
-}
+// Groq API Configuration
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const CHARACTER_THRESHOLD = 20;
 
-interface ProseMirrorNode {
-  type: string;
-  content?: TextNode[];
+/**
+ * Response structure from Groq API after XML parsing
+ */
+interface AIResponse {
+  isCurrentLine: boolean;
+  linePosition: number;
+  textToInsert: string;
 }
 
 /**
- * Formats a ProseMirror document into a readable line-by-line format
- * @param docContent - The doc.content array from ProseMirror
- * @param cursorPosition - The character position where the cursor is located
- * @returns Formatted string with line numbers and cursor indicator
+ * Calls Groq API to generate AI suggestions based on the document content
+ * @param markdown - The current markdown content from the editor
+ * @param cursorCurrentLine - The line number where the cursor is currently located
+ * @param cursorPositionAtCurrentLine - The position within the current line where the cursor is
+ * @param groqApiKey - The Groq API key from environment variables
+ * @returns Parsed AI response with isCurrentLine, linePosition, and textToInsert, or null if parsing fails
  */
-function formatDocumentLines(docContent: ProseMirrorNode[], cursorPosition: number): string {
-  const lines: string[] = [];
-  let charCount = 0;
-  let cursorLineNumber = -1;
-  let cursorOffsetInLine = -1;
-  let lastLineNumber = 0;
-  let lastLineLength = 0;
-  
-  // First pass: determine which line the cursor is on
-  docContent.forEach((node, index) => {
-    let lineText = "";
+async function callGroqAPI(
+  markdown: string, 
+  cursorCurrentLine: number,
+  cursorPositionAtCurrentLine: number,
+  groqApiKey: string
+): Promise<AIResponse | null> {
+  try {
+    console.log("Calling Groq API with content:", markdown.substring(0, 50) + "...");
+    console.log("Cursor info:", { cursorCurrentLine, cursorPositionAtCurrentLine });
     
-    // Extract text from the node's content array
-    if (node.content && Array.isArray(node.content)) {
-      lineText = node.content
-        .map((textNode: TextNode) => textNode.text || "")
-        .join("");
+    const response = await fetch(GROQ_API_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${groqApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          {
+            role: "system",
+            content: `You are a helpful writing assistant. Analyze the user's text and provide a contextual suggestion or completion.
+
+You MUST respond in the following XML format:
+<suggestion>
+  <is_current_line>true or false</is_current_line>
+  <line_position>NUMBER</line_position>
+  <text>Your suggestion text here</text>
+</suggestion>
+
+Guidelines:
+- is_current_line: Set to "true" if the suggestion should be inserted at the user's current cursor position. Set to "false" if it should be inserted at a different line.
+- line_position: If is_current_line is true, this value is ignored (the cursor position will be used). If false, this is the line number where the suggestion should be inserted.
+- text: Your suggestion text (1-2 sentences max, contextual and relevant)
+- Only provide the XML, no additional text
+
+The user is currently at line ${cursorCurrentLine}, position ${cursorPositionAtCurrentLine} in the line.`
+          },
+          {
+            role: "user",
+            content: `Continue or suggest improvements for this text:\n\n${markdown}`
+          }
+        ],
+        temperature: 0.7,
+        max_completion_tokens: 150,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("Groq API error:", response.status, await response.text());
+      return null;
     }
+
+    const data = await response.json();
+    const generatedText = data.choices?.[0]?.message?.content;
     
-    const lineLength = lineText.length;
-    const lineStartPos = charCount;
-    const lineEndPos = charCount + lineLength;
+    console.log("Groq API raw response:", generatedText);
     
-    // Check if cursor is within this line
-    if (cursorPosition >= lineStartPos && cursorPosition <= lineEndPos) {
-      cursorLineNumber = index + 1;
-      cursorOffsetInLine = cursorPosition - lineStartPos;
+    if (!generatedText) {
+      return null;
     }
-    
-    // Track last line for out-of-bounds handling
-    lastLineNumber = index + 1;
-    lastLineLength = lineLength;
-    
-    // Add 1 for the newline character between lines (except we count position within content)
-    charCount += lineLength + 1; // +1 for newline
-  });
-  
-  // If cursor is out of bounds, place it at the end of the last line
-  if (cursorLineNumber === -1 && docContent.length > 0) {
-    cursorLineNumber = lastLineNumber;
-    cursorOffsetInLine = lastLineLength;
+
+    // Parse XML response
+    const isCurrentLineMatch = generatedText.match(/<is_current_line>(true|false)<\/is_current_line>/i);
+    const linePositionMatch = generatedText.match(/<line_position>(\d+)<\/line_position>/);
+    const textMatch = generatedText.match(/<text>([\s\S]*?)<\/text>/);
+
+    if (!isCurrentLineMatch || !linePositionMatch || !textMatch) {
+      console.error("Failed to parse XML response. Raw response:", generatedText);
+      return null;
+    }
+
+    const parsedResponse: AIResponse = {
+      isCurrentLine: isCurrentLineMatch[1].toLowerCase() === "true",
+      linePosition: parseInt(linePositionMatch[1], 10),
+      textToInsert: textMatch[1].trim(),
+    };
+
+    console.log("Parsed AI response:", parsedResponse);
+    return parsedResponse;
+  } catch (error) {
+    console.error("Error calling Groq API:", error);
+    return null;
   }
-  
-  // Second pass: build the formatted output
-  docContent.forEach((node, index) => {
-    const lineNumber = index + 1;
-    let lineText = "";
-    
-    // Extract text from the node's content array
-    if (node.content && Array.isArray(node.content)) {
-      lineText = node.content
-        .map((textNode: TextNode) => textNode.text || "")
-        .join("");
-    }
-    
-    // Build the line with number and content
-    let formattedLine = `${lineNumber}. ${lineText}`;
-    
-    // Add cursor indicator if this is the cursor line
-    if (lineNumber === cursorLineNumber) {
-      // Insert cursor indicator at the exact position in the line
-      const beforeCursor = lineText.substring(0, cursorOffsetInLine);
-      const afterCursor = lineText.substring(cursorOffsetInLine);
-      formattedLine = `${lineNumber}. ${beforeCursor}<cursor is here>${afterCursor}`;
-    }
-    
-    lines.push(formattedLine);
-  });
-  
-  return lines.join("\n");
 }
 
 // Background task to keep realtime connection alive
@@ -114,58 +132,85 @@ async function realtimeBackgroundTask(
     },
   });
 
+  // Get Groq API key from environment
+
+  console.log('DENO ENV is', Deno.env.toObject());
+  const groqApiKey = Deno.env.get("GROQ_API_KEY") ?? "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";
+  
+  if (!groqApiKey) {
+    console.warn("GROQ_API_KEY not found in environment variables");
+  }
+
   // Subscribe to the channel and listen for broadcasts
   const channel = supabase.channel(channelName);
 
   // Store channel reference for cleanup
   activeChannels.set(channelName, channel);
 
+  // Flag to track if a Groq API call is in progress
+  let isGroqCallInProgress = false;
+
   channel
-    .on("broadcast", { event: "editor-change" }, (payload) => {
+    .on("broadcast", { event: "editor-change" }, async (payload) => {
       console.log("Received editor change:", JSON.stringify(payload, null, 2));
 
       // Extract document information
       const docContent = payload.payload?.doc?.content || [];
-      const cursorPosition = payload.payload?.cursorPosition || 0;
       const markdown = payload.payload?.markdown || "";
+      const cursorCurrentLine = payload.payload?.cursorCurrentLine || 1;
+      const cursorPositionAtCurrentLine = payload.payload?.cursorPositionAtCurrentLine || 0;
       
-      // Format and log the document structure
-      if (docContent.length > 0) {
-        const formattedDoc = formatDocumentLines(docContent, cursorPosition);
-        console.log("\n📝 Document structure:");
-        console.log(formattedDoc);
-        console.log(""); // Empty line for better readability
-      }
+      // Check if we should call the AI (if document has enough content)
+      if (docContent.length > 0 && markdown.length >= CHARACTER_THRESHOLD) {
+        console.log("\n📝 Document info:", {
+          cursorCurrentLine,
+          cursorPositionAtCurrentLine,
+          markdownLength: markdown.length,
+        });
 
-      if (markdown.toLowerCase().includes("pine")) {
-        console.log("Detected 'pine' in editor - triggering text insertion");
+        // Check if a Groq call is already in progress
+        if (isGroqCallInProgress) {
+          console.log("Groq API call already in progress, skipping this request");
+          return;
+        }
 
-        // Stub: For now, insert at line 3
-        // In the future, this could be determined by AI or other logic
-        const targetLineNumber = 3;
+        // Set flag to indicate call is in progress
+        isGroqCallInProgress = true;
 
-        channel.send({
-          type: "broadcast",
-          event: "insert-text",
-          payload: {
-            lineNumber: targetLineNumber,
-            text: "🌲 tree detected! This is AI-generated content.",
-            triggerWord: "pine",
-            detectedAtLine: cursorLineNumber,
-            serverTimestamp: new Date().toISOString(),
-          },
+        callGroqAPI(markdown, cursorCurrentLine, cursorPositionAtCurrentLine, groqApiKey).then((aiResponse) => {
+          if (aiResponse) {
+            console.log("Sending AI suggestion to clients:", aiResponse);
+            
+            // Determine the line number and cursor position based on isCurrentLine
+            const targetLineNumber = aiResponse.isCurrentLine ? cursorCurrentLine : aiResponse.linePosition;
+            const cursorPos = aiResponse.isCurrentLine ? cursorPositionAtCurrentLine : undefined;
+            
+            console.log("Insert parameters:", {
+              lineNumber: targetLineNumber,
+              cursorPosition: cursorPos,
+              isCurrentLine: aiResponse.isCurrentLine,
+            });
+            
+            channel.send({
+              type: "broadcast",
+              event: "insert-text",
+              payload: {
+                originalText: markdown,
+                lineNumber: targetLineNumber,
+                cursorPosition: cursorPos,
+                text: aiResponse.textToInsert,
+                isCurrentLine: aiResponse.isCurrentLine,
+                serverTimestamp: new Date().toISOString(),
+              },
+            });
+          }
+        }).catch((error) => {
+          console.error("Error processing Groq API response:", error);
+        }).finally(() => {
+          // Reset flag when call completes (success or error)
+          isGroqCallInProgress = false;
         });
       }
-
-      // Broadcast the change back to all clients (including sender for confirmation)
-      channel.send({
-        type: "broadcast",
-        event: "editor-update",
-        payload: {
-          ...payload,
-          serverTimestamp: new Date().toISOString(),
-        },
-      });
     })
     .subscribe((status) => {
       console.log(`Channel ${channelName} subscription status:`, status);

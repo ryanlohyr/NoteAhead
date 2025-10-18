@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { EditorView } from "prosemirror-view";
-import { EditorState } from "prosemirror-state";
 import { toggleMark } from "prosemirror-commands";
 import { schema } from "@/lib/collab/schema";
 import { MarkType } from "prosemirror-model";
@@ -46,9 +45,20 @@ export const FloatingMenu: React.FC<FloatingMenuProps> = ({ view }) => {
         return;
       }
 
-      // Get coordinates of the selection
-      const start = view.coordsAtPos(from);
-      const end = view.coordsAtPos(to);
+      // Validate positions are within document bounds
+      const docSize = state.doc.content.size;
+      const validFrom = Math.max(0, Math.min(from, docSize));
+      const validTo = Math.max(validFrom, Math.min(to, docSize));
+      
+      // If positions are invalid, hide menu
+      if (validFrom >= validTo || validFrom < 0 || validTo > docSize) {
+        setPosition(null);
+        return;
+      }
+
+      // Get coordinates of the selection using validated positions
+      const start = view.coordsAtPos(validFrom);
+      const end = view.coordsAtPos(validTo);
 
       // Calculate menu position (centered below selection)
       const menuWidth = menuRef.current?.offsetWidth || 300;
@@ -59,11 +69,10 @@ export const FloatingMenu: React.FC<FloatingMenuProps> = ({ view }) => {
 
       // Update active marks
       const marks = new Set<string>();
-      const { $from, $to } = selection;
       
-      // Check which marks are active in the selection
+      // Check which marks are active in the selection using validated positions
       menuButtons.forEach(({ mark }) => {
-        if (state.doc.rangeHasMark(from, to, mark)) {
+        if (state.doc.rangeHasMark(validFrom, validTo, mark)) {
           marks.add(mark.name);
         }
       });
@@ -73,7 +82,12 @@ export const FloatingMenu: React.FC<FloatingMenuProps> = ({ view }) => {
 
     // Update menu on selection change
     const handleUpdate = () => {
-      updateMenu();
+      try {
+        updateMenu();
+      } catch (error) {
+        console.error('Error updating floating menu:', error);
+        setPosition(null);
+      }
     };
 
     view.dom.addEventListener("mouseup", handleUpdate);
