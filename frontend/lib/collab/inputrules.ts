@@ -1,5 +1,4 @@
 import { inputRules, wrappingInputRule, textblockTypeInputRule, InputRule } from "prosemirror-inputrules";
-import { NodeType } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 import { schema } from "./schema";
 
@@ -8,6 +7,28 @@ import { schema } from "./schema";
  */
 export function buildInputRules(): Plugin {
   const rules: InputRule[] = [];
+
+  // Markdown link rule: [text](url) for links
+  rules.push(
+    new InputRule(
+      /\[([^\]]+)\]\(([^)]+)\)$/,
+      (state, match, start, end) => {
+        const [, text, url] = match;
+        console.log('🔗 Link input rule triggered!', { text, url, start, end });
+        const tr = state.tr;
+        
+        // Delete the markdown syntax
+        tr.delete(start, end);
+        
+        // Insert the link text with link mark
+        const linkMark = schema.marks.link.create({ href: url });
+        tr.insert(start, schema.text(text, [linkMark]));
+        
+        console.log('✅ Link created successfully');
+        return tr;
+      }
+    )
+  );
 
   // Heading rules: # for h1, ## for h2, etc.
   for (let level = 1; level <= 6; level++) {
@@ -41,7 +62,7 @@ export function buildInputRules(): Plugin {
         /^\s*([-+*])\s$/,
         schema.nodes.bullet_list,
         undefined,
-        (match) => ({ tight: true })
+        () => ({ tight: true })
       )
     );
   }

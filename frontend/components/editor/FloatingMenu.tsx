@@ -5,6 +5,7 @@ import { EditorView } from "prosemirror-view";
 import { toggleMark } from "prosemirror-commands";
 import { schema } from "@/lib/collab/schema";
 import { MarkType } from "prosemirror-model";
+import { TextSelection } from "prosemirror-state";
 
 interface FloatingMenuProps {
   view: EditorView | null;
@@ -30,6 +31,8 @@ export const FloatingMenu: React.FC<FloatingMenuProps> = ({ view }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   const [activeMarks, setActiveMarks] = useState<Set<string>>(new Set());
+  const [showLinkInput, setShowLinkInput] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
 
   useEffect(() => {
     if (!view) return;
@@ -77,6 +80,11 @@ export const FloatingMenu: React.FC<FloatingMenuProps> = ({ view }) => {
         }
       });
       
+      // Also check for link mark
+      if (state.doc.rangeHasMark(validFrom, validTo, schema.marks.link)) {
+        marks.add("link");
+      }
+      
       setActiveMarks(marks);
     };
 
@@ -112,12 +120,51 @@ export const FloatingMenu: React.FC<FloatingMenuProps> = ({ view }) => {
     }
   };
 
+  const handleLinkClick = () => {
+    if (!view) return;
+    
+    const { state } = view;
+    const { from, to } = state.selection;
+    
+    // Check if there's already a link
+    const linkMark = state.doc.rangeHasMark(from, to, schema.marks.link);
+    
+    if (linkMark) {
+      // Remove link
+      const tr = state.tr.removeMark(from, to, schema.marks.link);
+      view.dispatch(tr);
+      view.focus();
+    } else {
+      // Show link input
+      setShowLinkInput(true);
+      setLinkUrl("");
+    }
+  };
+
+  const handleLinkSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!view || !linkUrl) return;
+
+    const { state, dispatch } = view;
+    const { from, to } = state.selection;
+
+    // Add link mark
+    const tr = state.tr.addMark(from, to, schema.marks.link.create({ href: linkUrl }));
+    dispatch(tr);
+    
+    setShowLinkInput(false);
+    setLinkUrl("");
+    view.focus();
+  };
+
   if (!position || !view) return null;
+
+  const hasLink = activeMarks.has("link");
 
   return (
     <div
       ref={menuRef}
-      className="floating-menu fixed z-50 bg-white border border-gray-300 rounded-lg shadow-lg flex items-center gap-1 p-2"
+      className="floating-menu fixed z-50 bg-white border border-gray-300 rounded-lg shadow-lg p-2"
       style={{
         top: `${position.top}px`,
         left: `${position.left}px`,
@@ -127,28 +174,71 @@ export const FloatingMenu: React.FC<FloatingMenuProps> = ({ view }) => {
         e.preventDefault();
       }}
     >
-      {menuButtons.map(({ mark, label, title, className }) => {
-        const isActive = activeMarks.has(mark.name);
-        return (
+      {showLinkInput ? (
+        <form onSubmit={handleLinkSubmit} className="flex items-center gap-2">
+          <input
+            type="text"
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            placeholder="Enter URL"
+            className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            autoFocus
+          />
           <button
-            key={mark.name}
+            type="submit"
+            className="px-2 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
+          >
+            Add
+          </button>
+          <button
             type="button"
-            title={title}
-            onClick={() => handleMarkToggle(mark)}
+            onClick={() => setShowLinkInput(false)}
+            className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300"
+          >
+            Cancel
+          </button>
+        </form>
+      ) : (
+        <div className="flex items-center gap-1">
+          {menuButtons.map(({ mark, label, title, className }) => {
+            const isActive = activeMarks.has(mark.name);
+            return (
+              <button
+                key={mark.name}
+                type="button"
+                title={title}
+                onClick={() => handleMarkToggle(mark)}
+                className={`
+                  px-3 py-1.5 rounded transition-colors
+                  ${className || ""}
+                  ${
+                    isActive
+                      ? "bg-blue-500 text-white"
+                      : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                  }
+                `}
+              >
+                {label}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            title={hasLink ? "Remove Link" : "Add Link (Ctrl/Cmd-K)"}
+            onClick={handleLinkClick}
             className={`
               px-3 py-1.5 rounded transition-colors
-              ${className || ""}
               ${
-                isActive
+                hasLink
                   ? "bg-blue-500 text-white"
                   : "bg-gray-100 hover:bg-gray-200 text-gray-700"
               }
             `}
           >
-            {label}
+            🔗
           </button>
-        );
-      })}
+        </div>
+      )}
     </div>
   );
 };

@@ -19,6 +19,11 @@ import { supabase } from "@/lib/supabase";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useEditorInsertion } from "@/hooks/useEditorInsertion";
 import { useUpdateNote } from "@/query/notes";
+import { filePageLinkPlugin } from "@/lib/collab/filePageLink";
+import { convertMarkdownLinksInDocument } from "@/lib/collab/convertMarkdownLinks";
+import { useFileManagerStore } from "@/store/fileManager";
+import { useRightSidebarStore } from "@/store/sidebar";
+import { useSidebar } from "@/components/ui/sidebar";
 import "./CollabEditor.css";
 
 interface CollabEditorProps {
@@ -35,12 +40,12 @@ interface HealthCheckResponse {
   timestamp: string;
 }
 
-export default function CollabEditor({ 
-  docId, 
-  edgeFunctionUrl = process.env.NEXT_PUBLIC_SUPABASE_URL 
+export default function CollabEditor({
+  docId,
+  edgeFunctionUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/collab-session`
     : "http://localhost:54321/functions/v1/collab-session",
-  initialDoc
+  initialDoc,
 }: CollabEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
@@ -51,7 +56,15 @@ export default function CollabEditor({
   const reportRef = useRef<Reporter>(new Reporter());
   const hasUnsavedChanges = useRef<boolean>(false);
   const updateNote = useUpdateNote();
-  
+  const autoConvertTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastDocContentRef = useRef<string>("");
+
+  // Get stores for file page link handling
+  const scrollToPageRef = useFileManagerStore((state) => state.scrollToPageRef);
+  const selectFile = useFileManagerStore((state) => state.selectFile);
+  const { isRightOpen, openRight, setActiveView } = useRightSidebarStore();
+  const { setOpen: setLeftSidebarOpen } = useSidebar();
+
   // Use the editor insertion hook
   const {
     insertTextAtParagraph,
@@ -66,7 +79,7 @@ export default function CollabEditor({
     const checkHealth = async () => {
       try {
         reportRef.current.success();
-        
+
         // Get JWT from Supabase session
         const {
           data: { session },
@@ -84,13 +97,13 @@ export default function CollabEditor({
           method: "GET",
           headers,
         });
-        
+
         if (!response.ok) {
           throw new Error(`Health check failed: ${response.statusText}`);
         }
 
         const data: HealthCheckResponse = await response.json();
-        
+
         if (data.status === "healthy") {
           setIsHealthy(true);
           setChannelName(data.channel);
@@ -118,12 +131,12 @@ export default function CollabEditor({
       if (!placeholderRange) return false;
 
       const { from, to } = placeholderRange;
-      
+
       // Validate and clamp positions to valid range
       const docSize = state.doc.content.size;
       const validFrom = Math.max(0, Math.min(from, docSize));
       const validTo = Math.max(validFrom, Math.min(to, docSize));
-      
+
       if (validFrom >= validTo || validFrom < 0) {
         // Invalid range, clear it
         placeholderRangeRef.current = null;
@@ -131,10 +144,10 @@ export default function CollabEditor({
         isPendingAcceptRef.current = false;
         return false;
       }
-      
+
       // Check if there's placeholder text in the document
       const hasMark = state.doc.rangeHasMark(validFrom, validTo, schema.marks.placeholder);
-      
+
       if (hasMark && dispatch) {
         let tr = state.tr.removeMark(validFrom, validTo, schema.marks.placeholder);
         // Use the transaction's document to create the selection
@@ -146,7 +159,7 @@ export default function CollabEditor({
         isPendingAcceptRef.current = false;
         return true;
       }
-      
+
       return false;
     };
 
@@ -156,20 +169,20 @@ export default function CollabEditor({
       appendTransaction(transactions, oldState, newState) {
         const placeholderRange = placeholderRangeRef.current;
         if (!placeholderRange) return null;
-        
+
         const { from, to } = placeholderRange;
         const docSize = newState.doc.content.size;
-        
+
         // Check if the range is now invalid
         if (from < 0 || to > docSize || from >= to) {
-          console.warn('Clearing invalid placeholder range', { from, to, docSize });
+          console.warn("Clearing invalid placeholder range", { from, to, docSize });
           placeholderRangeRef.current = null;
           setIsPendingAccept(false);
           isPendingAcceptRef.current = false;
         }
-        
+
         return null; // Don't modify the transaction
-      }
+      },
     });
 
     // Plugin to add placeholder class to empty paragraphs
@@ -181,27 +194,33 @@ export default function CollabEditor({
         },
         apply(tr, set) {
           return set.map(tr.mapping, tr.doc);
-        }
+        },
       },
       props: {
         decorations(state) {
           const doc = state.doc;
           const decorations: Decoration[] = [];
-          
+
           // Check if document is effectively empty (only one paragraph with no content)
           if (doc.childCount === 1) {
             const firstChild = doc.firstChild;
-            if (firstChild && firstChild.type.name === 'paragraph' && firstChild.content.size === 0) {
+            if (
+              firstChild &&
+              firstChild.type.name === "paragraph" &&
+              firstChild.content.size === 0
+            ) {
               // Add a node decoration with the class
               decorations.push(
                 Decoration.node(0, firstChild.nodeSize, {
-                  class: 'is-editor-empty'
+                  class: "is-editor-empty",
                 })
               );
             }
           }
-          
-          return decorations.length > 0 ? DecorationSet.create(doc, decorations) : DecorationSet.empty;
+
+          return decorations.length > 0
+            ? DecorationSet.create(doc, decorations)
+            : DecorationSet.empty;
         },
       },
     });
@@ -220,7 +239,7 @@ export default function CollabEditor({
           const docSize = view.state.doc.content.size;
           const validFrom = Math.max(0, Math.min(placeholderFrom, docSize));
           const validTo = Math.max(validFrom, Math.min(placeholderTo, docSize));
-          
+
           if (validFrom >= validTo || validFrom < 0 || validTo > docSize) {
             // Invalid range, clear it
             placeholderRangeRef.current = null;
@@ -233,7 +252,7 @@ export default function CollabEditor({
           if (from >= validFrom && from <= validTo) {
             // Get the placeholder text (using validated positions)
             const placeholderText = view.state.doc.textBetween(validFrom, validTo);
-            
+
             // Get the position within the placeholder text
             const posInPlaceholder = from - validFrom;
             const expectedChar = placeholderText[posInPlaceholder];
@@ -252,7 +271,7 @@ export default function CollabEditor({
             const normalizeChar = (char: string) => {
               const code = char.charCodeAt(0);
               // Convert non-breaking space (160) to regular space (32)
-              if (code === 160) return ' ';
+              if (code === 160) return " ";
               return char;
             };
 
@@ -261,29 +280,25 @@ export default function CollabEditor({
 
             if (normalizedText === normalizedExpected) {
               // Character matches! Remove placeholder mark from just this character
-              const tr = view.state.tr.removeMark(
-                from,
-                from + 1,
-                schema.marks.placeholder
-              );
+              const tr = view.state.tr.removeMark(from, from + 1, schema.marks.placeholder);
               // Move cursor forward
               const nextPos = Math.min(from + 1, tr.doc.content.size);
               tr.setSelection(TextSelection.create(tr.doc, nextPos));
               view.dispatch(tr);
-              
+
               // Update the placeholder range to reflect the new start position
               placeholderRangeRef.current = {
                 from: from + 1,
                 to: validTo,
               };
-              
+
               // If we've accepted the whole text, clear the reference and pending state
               if (from + 1 >= validTo) {
                 placeholderRangeRef.current = null;
                 setIsPendingAccept(false);
                 isPendingAcceptRef.current = false;
               }
-              
+
               return true;
             } else {
               // Character doesn't match! Delete the entire placeholder
@@ -292,7 +307,7 @@ export default function CollabEditor({
               placeholderRangeRef.current = null;
               setIsPendingAccept(false); // Clear pending state
               isPendingAcceptRef.current = false;
-              
+
               // Let the typed character be inserted normally by returning false
               return false;
             }
@@ -311,37 +326,41 @@ export default function CollabEditor({
         doc = schema.nodeFromJSON(initialDoc);
       } catch (error) {
         console.error("Failed to parse initial document, using default:", error);
-        doc = schema.node("doc", null, [
-          schema.node("paragraph"),
-        ]);
+        doc = schema.node("doc", null, [schema.node("paragraph")]);
       }
     } else {
-      doc = schema.node("doc", null, [
-        schema.node("paragraph"),
-      ]);
+      doc = schema.node("doc", null, [schema.node("paragraph")]);
     }
 
     const state = EditorState.create({
       doc,
-        plugins: [
-          buildInputRules(), // Add markdown input rules (must be early in plugin order)
-          placeholderValidationPlugin, // Validate placeholder range on document changes
-          placeholderClassPlugin, // Add placeholder class to empty paragraphs
-          placeholderInputPlugin, // Add placeholder input handler
-          buildKeymap(),
-          keymap({
-            ...baseKeymap,
-            "Tab": handleTab, // Add Tab handler
-          }),
-          dropCursor(),
-          gapCursor(),
-          history(),
-          commentPlugin,
+      plugins: [
+        buildInputRules(), // Add markdown input rules (must be early in plugin order)
+        placeholderValidationPlugin, // Validate placeholder range on document changes
+        placeholderClassPlugin, // Add placeholder class to empty paragraphs
+        placeholderInputPlugin, // Add placeholder input handler
+        filePageLinkPlugin({
+          scrollToPageRef,
+          isRightOpen,
+          openRight,
+          setLeftSidebarOpen,
+          setActiveView,
+          selectFile,
+        }), // Custom file page link rendering
+        buildKeymap(),
+        keymap({
+          ...baseKeymap,
+          Tab: handleTab, // Add Tab handler
+        }),
+        dropCursor(),
+        gapCursor(),
+        history(),
+        commentPlugin,
         commentUI((transaction: Transaction) => {
           if (view) {
             const newState = view.state.apply(transaction);
             view.updateState(newState);
-            
+
             // Broadcast change to Realtime
             if (channelRef.current) {
               channelRef.current.send({
@@ -366,15 +385,15 @@ export default function CollabEditor({
       let isAtEndOfLine = false;
       let cursorPositionInLine = 0;
       let found = false;
-      
+
       state.doc.descendants((node, pos) => {
         if (found) return false; // Stop if already found
-        
-        if (node.type.name === 'paragraph') {
+
+        if (node.type.name === "paragraph") {
           currentLineNumber++;
           const paragraphStart = pos + 1; // +1 to skip opening tag
           const paragraphEnd = pos + node.nodeSize - 1; // -1 to exclude closing tag
-          
+
           // Check if cursor is within this paragraph
           if (from >= paragraphStart && from <= paragraphEnd) {
             cursorLineNumber = currentLineNumber;
@@ -387,10 +406,10 @@ export default function CollabEditor({
           }
         }
       });
-      
-      return { 
-        cursorPosition: from, 
-        lineNumber: cursorLineNumber, 
+
+      return {
+        cursorPosition: from,
+        lineNumber: cursorLineNumber,
         isAtEndOfLine,
         cursorPositionInLine,
       };
@@ -398,21 +417,21 @@ export default function CollabEditor({
 
     // Helper function to convert doc to markdown
     const docToMarkdown = (state: EditorState): string => {
-      let markdown = '';
-      
+      let markdown = "";
+
       state.doc.descendants((node) => {
-        if (node.type.name === 'paragraph') {
-          markdown += node.textContent + '\n';
-        } else if (node.type.name === 'heading') {
+        if (node.type.name === "paragraph") {
+          markdown += node.textContent + "\n";
+        } else if (node.type.name === "heading") {
           const level = node.attrs.level || 1;
-          markdown += '#'.repeat(level) + ' ' + node.textContent + '\n';
-        } else if (node.type.name === 'code_block') {
-          markdown += '```\n' + node.textContent + '\n```\n';
-        } else if (node.type.name === 'blockquote') {
-          markdown += '> ' + node.textContent + '\n';
+          markdown += "#".repeat(level) + " " + node.textContent + "\n";
+        } else if (node.type.name === "code_block") {
+          markdown += "```\n" + node.textContent + "\n```\n";
+        } else if (node.type.name === "blockquote") {
+          markdown += "> " + node.textContent + "\n";
         }
       });
-      
+
       return markdown.trim();
     };
 
@@ -422,18 +441,43 @@ export default function CollabEditor({
       dispatchTransaction: (transaction: Transaction) => {
         const newState = view.state.apply(transaction);
         view.updateState(newState);
-        
+
         // Mark that we have unsaved changes
         if (transaction.docChanged) {
           hasUnsavedChanges.current = true;
+
+          // Auto-convert markdown links after typing stops
+          const currentContent = newState.doc.textContent;
+          const contentChanged = currentContent !== lastDocContentRef.current;
+
+          if (contentChanged && currentContent.length > 5) {
+            // Clear previous timer
+            if (autoConvertTimerRef.current) {
+              clearTimeout(autoConvertTimerRef.current);
+            }
+
+            // Set new timer to convert links after 1 second of no typing
+            autoConvertTimerRef.current = setTimeout(() => {
+              if (view && !view.isDestroyed) {
+                console.log("⏰ Auto-converting markdown links...");
+                const tr = convertMarkdownLinksInDocument(view.state);
+                if (tr) {
+                  view.dispatch(tr);
+                  console.log("✅ Auto-conversion completed");
+                }
+              }
+            }, 1000); // 1 second delay
+
+            lastDocContentRef.current = currentContent;
+          }
         }
-        
+
         // Broadcast changes to Realtime if there are doc changes and not pending accept
         if (transaction.docChanged && channelRef.current && !isPendingAcceptRef.current) {
           const cursorInfo = getCursorInfo(newState);
           const markdown = docToMarkdown(newState);
 
-          console.log('broadcasting editor change', {
+          console.log("broadcasting editor change", {
             cursorInfo,
             markdown,
             cursorCurrentLine: cursorInfo.lineNumber,
@@ -469,7 +513,7 @@ export default function CollabEditor({
 
     // Setup Realtime channel
     const channel = supabase.channel(channelName);
-    
+
     channel
       .on("broadcast", { event: "editor-update" }, (payload) => {
         console.log("Received editor update from server:", payload);
@@ -478,18 +522,18 @@ export default function CollabEditor({
       })
       .on("broadcast", { event: "insert-text" }, (payload) => {
         console.log("Received insert-text command from server:", payload);
-        
+
         // Only process if there's no pending insertion
         if (isPendingAcceptRef.current) {
           console.log("Ignoring insert-text: already pending accept");
           return;
         }
-        
+
         const { lineNumber, cursorPosition, text } = payload.payload;
-        if (lineNumber && typeof lineNumber === 'number') {
-          console.log('insert text at paragraph', lineNumber, cursorPosition, text);
+        if (lineNumber && typeof lineNumber === "number") {
+          console.log("insert text at paragraph", lineNumber, cursorPosition, text);
           insertTextAtParagraph(
-            lineNumber, 
+            lineNumber,
             cursorPosition !== undefined ? cursorPosition : undefined,
             text || `Text inserted at line ${lineNumber}!`
           );
@@ -507,6 +551,12 @@ export default function CollabEditor({
     channelRef.current = channel;
 
     return () => {
+      // Clean up auto-convert timer
+      if (autoConvertTimerRef.current) {
+        clearTimeout(autoConvertTimerRef.current);
+        autoConvertTimerRef.current = null;
+      }
+
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
@@ -516,14 +566,28 @@ export default function CollabEditor({
       }
       editorViewRef.current = null;
     };
-  }, [isHealthy, channelName, docId, insertTextAtParagraph, placeholderRangeRef, setIsPendingAccept, isPendingAcceptRef]);
+  }, [
+    isHealthy,
+    channelName,
+    docId,
+    insertTextAtParagraph,
+    placeholderRangeRef,
+    setIsPendingAccept,
+    isPendingAcceptRef,
+    scrollToPageRef,
+    isRightOpen,
+    openRight,
+    setLeftSidebarOpen,
+    setActiveView,
+    selectFile,
+  ]);
 
   // Auto-save effect - saves content every 5 seconds if there are changes
   useEffect(() => {
     const autoSaveInterval = setInterval(() => {
       if (hasUnsavedChanges.current && editorViewRef.current) {
         const currentDoc = editorViewRef.current.state.doc.toJSON();
-        
+
         console.log("Auto-saving document...");
         updateNote.mutate(
           {
@@ -548,18 +612,33 @@ export default function CollabEditor({
     };
   }, [docId, updateNote]);
 
+  // Handler to convert markdown links
+  // const handleConvertLinks = () => {
+  //   if (!editorViewRef.current) return;
+
+  //   const tr = convertMarkdownLinksInDocument(editorViewRef.current.state);
+  //   if (tr) {
+  //     editorViewRef.current.dispatch(tr);
+  //     console.log("✅ Markdown links converted!");
+  //   } else {
+  //     console.log("ℹ️ No markdown links found to convert");
+  //   }
+  // };
+
   return (
     <div className="collab-editor-container relative h-[calc(100vh-50px)] flex flex-col overflow-hidden">
       <FloatingMenu view={editorView} />
-      <div className="editor-info flex-shrink-0">
-        <EditorTestControls 
+      <div className="editor-info flex-shrink-0 p-2 border-b border-gray-200 flex items-center gap-2">
+        <EditorTestControls
           editorView={editorView}
           isPendingAccept={isPendingAccept}
           insertTextAtParagraph={insertTextAtParagraph}
         />
       </div>
-      <div ref={editorRef} className="editor-content prose max-w-none flex-1 flex flex-col min-h-0" />
+      <div
+        ref={editorRef}
+        className="editor-content prose max-w-none flex-1 flex flex-col min-h-0"
+      />
     </div>
   );
 }
-

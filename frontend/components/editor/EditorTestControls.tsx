@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import type { EditorView } from "prosemirror-view";
+import { convertMarkdownLinksInDocument } from "@/lib/collab/convertMarkdownLinks";
 
 interface EditorTestControlsProps {
   editorView: EditorView | null;
@@ -22,6 +23,18 @@ export function EditorTestControls({
   const [testCursorPosition, setTestCursorPosition] = useState<string>("0");
   const [testText, setTestText] = useState<string>("Hello world");
 
+  const handleConvertLinks = () => {
+    if (!editorView) return;
+
+    const tr = convertMarkdownLinksInDocument(editorView.state);
+    if (tr) {
+      editorView.dispatch(tr);
+      console.log('✅ Markdown links converted!');
+    } else {
+      console.log('ℹ️ No markdown links found to convert');
+    }
+  };
+
   // Only render in test mode
   if (process.env.NEXT_PUBLIC_IS_TEST !== "true") {
     return null;
@@ -29,18 +42,23 @@ export function EditorTestControls({
 
   return (
     <>
-      {" "}
       <div className="text-sm text-gray-600 mb-2">
         <div>
-          {isHealthy ? "Connected" : "Connecting..."}
-          {channelName && <span className="ml-2 text-xs text-gray-400">• {channelName}</span>}
           {isPendingAccept && (
             <span className="ml-2 text-xs text-orange-500 font-medium">
               • Pending Accept (Tab to accept all)
             </span>
           )}
-          
         </div>
+      </div>
+      <div className="flex items-center gap-2 text-sm mb-2">
+        <button
+          onClick={handleConvertLinks}
+          disabled={!editorView}
+          className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+        >
+          🔗 Convert Markdown Links
+        </button>
       </div>
       <div className="flex items-center gap-2 text-sm">
         <input

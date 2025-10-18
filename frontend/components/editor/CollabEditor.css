@@ -19,6 +19,12 @@
   position: relative;
 }
 
+/* File page link widget styling */
+.ProseMirror .file-page-link-widget {
+  vertical-align: baseline;
+  margin: 0 2px;
+}
+
 /* Placeholder text when editor is empty */
 .ProseMirror .is-editor-empty::before {
   content: 'What are you thinking of today?';

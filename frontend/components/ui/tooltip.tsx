@@ -4,6 +4,7 @@ import * as React from "react"
 import * as TooltipPrimitive from "@radix-ui/react-tooltip"
 
 import { cn } from "@/lib/utils"
+import { ReactNode } from "react"
 
 const TooltipProvider = TooltipPrimitive.Provider
 
@@ -28,5 +29,34 @@ const TooltipContent = React.forwardRef<
   </TooltipPrimitive.Portal>
 ))
 TooltipContent.displayName = TooltipPrimitive.Content.displayName
+
+interface WrapWithTooltipProps {
+  trigger: ReactNode;
+  children: ReactNode;
+  showTooltip?: boolean;
+  side?: "top" | "bottom" | "left" | "right";
+  align?: "start" | "center" | "end";
+}
+
+export const WrapWithTooltip = ({
+  trigger,
+  children,
+  showTooltip = true,
+  side = "bottom",
+  align = "center",
+}: WrapWithTooltipProps) => {
+  if (!showTooltip) return <>{trigger}</>;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+        <TooltipContent side={side} align={align}>
+          {children}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
 
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }

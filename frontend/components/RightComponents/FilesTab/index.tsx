@@ -1,46 +1,48 @@
-import { useGetAllFiles, downloadFileBlob } from "@/query/files";
+import { useGetAllFiles } from "@/query/files";
 import { FileItem } from "@/query/files";
 import { useState } from "react";
 import { FileViewer } from "@/components/FileViewer";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Files } from "lucide-react";
+import { useFileManagerStore } from "@/store/fileManager";
 
 export const FilesList = () => {
   const { data, isLoading } = useGetAllFiles();
-  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
-  const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
+  
+  // Use global file manager store
+  const selectedFileId = useFileManagerStore((state) => state.selectedFileId);
+  const selectedFileBlobUrl = useFileManagerStore((state) => state.selectedFileBlobUrl);
+  const selectFile = useFileManagerStore((state) => state.selectFile);
+  const clearSelectedFile = useFileManagerStore((state) => state.clearSelectedFile);
 
   const files = data?.files || [];
+  
+  // Get the selected file object from the files list
+  const selectedFile = selectedFileId ? files.find((f) => f.id === selectedFileId) : null;
 
   const handleFileSelect = async (fileId: string) => {
     const file = files.find((f) => f.id === fileId);
     if (!file) return;
 
-    setSelectedFile(file);
     setIsLoadingContent(true);
     try {
-      const blob = await downloadFileBlob(file.id);
-      const url = URL.createObjectURL(blob);
-      setFileBlobUrl(url);
+      await selectFile(file.id);
     } catch (error) {
       console.error("Failed to load file:", error);
-      setFileBlobUrl(null);
     } finally {
       setIsLoadingContent(false);
     }
   };
 
   const handleCloseViewer = () => {
-    if (fileBlobUrl) {
-      URL.revokeObjectURL(fileBlobUrl);
-    }
-    setSelectedFile(null);
-    setFileBlobUrl(null);
+    clearSelectedFile();
   };
 
   const handleDownload = async (file: FileItem) => {
     try {
+      // Import dynamically to match the store's pattern
+      const { downloadFileBlob } = await import("@/query/files");
       const blob = await downloadFileBlob(file.id);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -75,7 +77,7 @@ export const FilesList = () => {
   return (
     <>
       <div className="p-4">
-        <Select onValueChange={handleFileSelect}>
+        <Select onValueChange={handleFileSelect} value={selectedFileId || undefined}>
           <SelectTrigger>
             <SelectValue placeholder="Select a file to view" />
           </SelectTrigger>
@@ -91,7 +93,7 @@ export const FilesList = () => {
       {selectedFile && (
         <FileViewer
           selectedFile={selectedFile}
-          fileBlobUrl={fileBlobUrl}
+          fileBlobUrl={selectedFileBlobUrl}
           isLoadingContent={isLoadingContent}
           onClose={handleCloseViewer}
           onDownload={handleDownload}
