@@ -8,6 +8,13 @@
       "when": 1760766278721,
       "tag": "0000_red_ghost_rider",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1760768018931,
+      "tag": "0001_abnormal_gorilla_man",
+      "breakpoints": true
     }
   ]
 }

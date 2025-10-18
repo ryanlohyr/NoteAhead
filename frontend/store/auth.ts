@@ -76,6 +76,7 @@ interface AuthState {
   logout: () => Promise<void>;
   signUp: (email: string, password: string) => Promise<{ success: boolean; error: unknown }>;
   loginWithPassword: (email: string, password: string) => Promise<boolean>;
+  getAccessToken: () => Promise<string | null>;
   clearError: () => void;
 }
 
@@ -190,6 +191,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     } finally {
       set({ isLoading: false });
     }
+  },
+
+  getAccessToken: async () => {
+    const { data: sessionData } = await authService.getSession();
+    return sessionData.session?.access_token || null;
   },
 
   clearError: () => set({ error: null }),
