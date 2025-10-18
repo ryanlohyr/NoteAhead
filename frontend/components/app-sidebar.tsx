@@ -23,12 +23,12 @@ import { Button } from "@/components/ui/button";
 const items = [
   {
     title: "Notes",
-    url: "#",
+    url: "/",
     icon: FileText,
   },
   {
     title: "Files",
-    url: "#",
+    url: "/files",
     icon: FolderOpen,
   },
 ];
@@ -81,10 +81,10 @@ export function AppSidebar() {
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
-                    <a href={item.url}>
+                    <Link href={item.url}>
                       <item.icon />
                       <span>{item.title}</span>
-                    </a>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

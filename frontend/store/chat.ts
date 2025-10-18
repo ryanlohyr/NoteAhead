@@ -5,6 +5,8 @@ interface ChatState {
   messages: Message[];
   currentChat: Chat | null;
   isLoading: boolean;
+  copiedTextFromPdf: string | null;
+  attachedFiles: any[];
 
   // Actions
   addMessage: (message: Message) => void;
@@ -13,12 +15,17 @@ interface ChatState {
   clearMessages: () => void;
   setCurrentChat: (chat: Chat | null) => void;
   setIsLoading: (loading: boolean) => void;
+  setCopiedTextFromPdf: (text: string | null) => void;
+  setAttachedFiles: (files: any[] | ((prev: any[]) => any[])) => void;
+  focusChatInput: () => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   currentChat: null,
   isLoading: false,
+  copiedTextFromPdf: null,
+  attachedFiles: [],
 
   addMessage: (message) =>
     set((state) => ({
@@ -61,5 +68,17 @@ export const useChatStore = create<ChatState>((set) => ({
   setCurrentChat: (chat) => set({ currentChat: chat }),
 
   setIsLoading: (loading) => set({ isLoading: loading }),
+
+  setCopiedTextFromPdf: (text) => set({ copiedTextFromPdf: text }),
+
+  setAttachedFiles: (files) =>
+    set((state) => ({
+      attachedFiles: typeof files === 'function' ? files(state.attachedFiles) : files,
+    })),
+
+  focusChatInput: () => {
+    // This can be implemented when you have a chat input component
+    // For now, it's just a placeholder
+  },
 }));
 
