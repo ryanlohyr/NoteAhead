@@ -23,6 +23,7 @@ import { filePageLinkPlugin } from "@/lib/collab/filePageLink";
 import { convertMarkdownLinksInDocument } from "@/lib/collab/convertMarkdownLinks";
 import { useFileManagerStore } from "@/store/fileManager";
 import { useRightSidebarStore } from "@/store/sidebar";
+import { useEditorStore } from "@/store/editor";
 import { useSidebar } from "@/components/ui/sidebar";
 import "./CollabEditor.css";
 
@@ -64,6 +65,7 @@ export default function CollabEditor({
   const selectFile = useFileManagerStore((state) => state.selectFile);
   const { isRightOpen, openRight, setActiveView } = useRightSidebarStore();
   const { setOpen: setLeftSidebarOpen } = useSidebar();
+  const setInsertTextFunction = useEditorStore((state) => state.setInsertTextFunction);
 
   // Use the editor insertion hook
   const {
@@ -585,6 +587,9 @@ export default function CollabEditor({
       });
 
     channelRef.current = channel;
+    
+    // Register insert function with global editor store
+    setInsertTextFunction(insertTextAtParagraph, docId);
 
     return () => {
       // Clean up auto-convert timer
@@ -597,6 +602,10 @@ export default function CollabEditor({
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
+      
+      // Unregister insert function from global editor store
+      setInsertTextFunction(null, null);
+      
       if (view) {
         view.destroy();
       }
@@ -615,7 +624,8 @@ export default function CollabEditor({
     openRight,
     setLeftSidebarOpen,
     setActiveView,
-    selectFile
+    selectFile,
+    setInsertTextFunction,
   ]);
 
   // Auto-save effect - saves content every 5 seconds if there are changes

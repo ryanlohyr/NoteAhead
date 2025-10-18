@@ -12,7 +12,7 @@ interface ThoughtProcessProps {
 }
 
 export const ThoughtProcess: React.FC<ThoughtProcessProps> = ({ parts, isLoading = false }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   // Filter and sort parts by sequence to maintain order
   const thoughtProcessParts = parts
@@ -28,7 +28,7 @@ export const ThoughtProcess: React.FC<ThoughtProcessProps> = ({ parts, isLoading
         case "function_call":
           return (
             <div className="space-y-2">
-              <div className="text-xs font-medium text-muted-foreground">Tool Call</div>
+              <div className="text-xs font-medium text-muted-foreground">Function Call</div>
               <FunctionCallItem functionCall={part.data as FunctionCallType} />
             </div>
           );
@@ -39,13 +39,11 @@ export const ThoughtProcess: React.FC<ThoughtProcessProps> = ({ parts, isLoading
     };
 
     return (
-      <div key={part.id} className="mt-3 relative w-full min-w-0">
-        {/* Timeline dot */}
-        <div className="absolute left-[7.5px] top-2 w-2 h-2 bg-muted-foreground rounded-full z-10"></div>
-        {/* Timeline line */}
-        <div className="absolute left-[11px] top-4 w-px h-[calc(100%-16px)] bg-muted-foreground/20"></div>
+      <div key={part.id} className="mt-3 z-2 relative w-full min-w-0">
+        <div className="absolute left-[7.5px] top-2 w-2 h-2 bg-muted-foreground rounded-full z-2"></div>
+        <div className="absolute left-[11px] bottom-0 w-px h-[calc(100%_-_10px)] bg-muted-foreground/20"></div>
 
-        <div className="pl-6 ml-2 w-full min-w-0 overflow-hidden">
+        <div className="border-muted-foreground/20 pl-6 ml-2 w-full min-w-0 overflow-hidden">
           {getContent()}
         </div>
       </div>
@@ -55,7 +53,7 @@ export const ThoughtProcess: React.FC<ThoughtProcessProps> = ({ parts, isLoading
   if (thoughtProcessParts.length === 0) return null;
 
   return (
-    <div className="mt-3 space-y-2 w-full">
+    <div className="mt-3 space-y-2 overflow-x-hidden max-w-full">
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
         className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
@@ -65,13 +63,13 @@ export const ThoughtProcess: React.FC<ThoughtProcessProps> = ({ parts, isLoading
         ) : (
           <ChevronDown className="h-3 w-3" />
         )}
-        Thought Process ({thoughtProcessParts.length} {thoughtProcessParts.length === 1 ? "step" : "steps"})
+        Thought Process ({thoughtProcessParts.length} items)
 
         {isLoading && <Loader2 className="h-3 w-3 animate-spin" />}
       </button>
 
       {!isCollapsed && (
-        <div className="space-y-0 w-full min-w-0 overflow-hidden">
+        <div className="space-y-2 w-full min-w-0 overflow-hidden">
           {thoughtProcessParts.map((part) => renderMessagePart(part))}
         </div>
       )}

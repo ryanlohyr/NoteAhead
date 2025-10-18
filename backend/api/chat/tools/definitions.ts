@@ -62,3 +62,42 @@ export const searchKnowledgeBaseTool = {
   strict: true,
 };
 
+export const readFileTool = {
+  type: "function" as const,
+  name: ToolNames.READ_FILE,
+  description:
+    "Read the complete contents of a file by retrieving all its chunks in order. Use this when the user wants to see the full contents of a specific file or document.",
+  parameters: {
+    type: "object",
+    properties: {
+      fileId: {
+        type: "string",
+        description: "The ID of the file to read",
+      },
+    },
+    required: ["fileId"],
+    additionalProperties: false,
+  },
+  strict: true,
+};
+
+export const addToNotesTool = {
+  type: "function" as const,
+  name: ToolNames.ADD_TO_NOTES,
+  description:
+    "Add formatted notes with highlighted points and attribution links to the user's notes. Use this when the user wants to save information to their notes with proper formatting and source attribution.",
+  parameters: {
+    type: "object",
+    properties: {
+      formattedNotes: {
+        type: "string",
+        description:
+          "The formatted notes content with highlighting and attribution points using markdown format with links in the format [page](fileId)",
+      },
+    },
+    required: ["formattedNotes"],
+    additionalProperties: false,
+  },
+  strict: true,
+};
+

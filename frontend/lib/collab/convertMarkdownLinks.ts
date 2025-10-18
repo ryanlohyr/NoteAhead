@@ -33,23 +33,40 @@ export function convertMarkdownLinksInDocument(state: EditorState): Transaction 
         const from = pos + start;
         const to = pos + end;
 
+        // Validate positions are within document bounds
+        const docSize = tr.doc.content.size;
+        if (from < 0 || to > docSize || from >= to) {
+          console.warn('⚠️ Invalid position range for markdown link conversion', { from, to, docSize });
+          continue;
+        }
+
         // Skip converting if any part of this range has the placeholder mark
-        if (state.doc.rangeHasMark(from, to, schema.marks.placeholder)) {
-          console.log('⏭️ Skipping markdown link conversion inside placeholder range', { from, to });
+        try {
+          if (tr.doc.rangeHasMark(from, to, schema.marks.placeholder)) {
+            console.log('⏭️ Skipping markdown link conversion inside placeholder range', { from, to });
+            continue;
+          }
+        } catch (error) {
+          console.warn('⚠️ Error checking placeholder mark, skipping conversion', { from, to, error });
           continue;
         }
 
         console.log('🔄 Converting markdown link:', { linkText, url, from, to });
 
-        // Delete the markdown syntax
-        tr.delete(from, to);
+        try {
+          // Delete the markdown syntax
+          tr.delete(from, to);
 
-        // Insert the link text with link mark
-        const linkMark = schema.marks.link.create({ href: url });
-        const linkNode = schema.text(linkText, [linkMark]);
-        tr.insert(from, linkNode);
+          // Insert the link text with link mark
+          const linkMark = schema.marks.link.create({ href: url });
+          const linkNode = schema.text(linkText, [linkMark]);
+          tr.insert(from, linkNode);
 
-        modified = true;
+          modified = true;
+        } catch (error) {
+          console.error('❌ Error converting markdown link:', { from, to, error });
+          // Continue processing other links
+        }
       }
     }
   });

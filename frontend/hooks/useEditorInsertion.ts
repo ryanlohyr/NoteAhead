@@ -12,7 +12,8 @@ export function useEditorInsertion(editorViewRef: React.RefObject<EditorView | n
   const insertTextAtParagraph = useCallback((
     lineNumber: number, 
     cursorPosition?: number,
-    textToInsert: string = `Text inserted at line ${lineNumber}!`
+    textToInsert: string = `Text inserted at line ${lineNumber}!`,
+    usePlaceholder: boolean = true
   ) => {
     const editorView = editorViewRef.current;
     if (!editorView) return;
@@ -175,31 +176,42 @@ export function useEditorInsertion(editorViewRef: React.RefObject<EditorView | n
     const finalDocSize = transaction.doc.content.size;
     insertPos = Math.max(0, Math.min(insertPos, finalDocSize));
     
-    // Insert the text with placeholder mark at the target position
-    const placeholderMark = schema.marks.placeholder.create();
+    if (usePlaceholder) {
+      // Insert the text with placeholder mark at the target position
+      const placeholderMark = schema.marks.placeholder.create();
 
-    console.log('inserting text', finalTextToInsert);
-    console.log('placeholder mark', placeholderMark);
-    
-    transaction = transaction.insert(
-      insertPos,
-      schema.text(finalTextToInsert, [placeholderMark])
-    );
-    
-    // Store the range of the placeholder text
-    placeholderRangeRef.current = {
-      from: insertPos,
-      to: insertPos + finalTextToInsert.length,
-    };
-    
-    // Set pending accept state to true
-    setIsPendingAccept(true);
-    isPendingAcceptRef.current = true;
-    
-    // Set cursor at the start of the inserted text
-    transaction = transaction.setSelection(
-      TextSelection.create(transaction.doc, insertPos)
-    );
+      console.log('inserting text with placeholder', finalTextToInsert);
+      
+      transaction = transaction.insert(
+        insertPos,
+        schema.text(finalTextToInsert, [placeholderMark])
+      );
+      
+      // Store the range of the placeholder text
+      placeholderRangeRef.current = {
+        from: insertPos,
+        to: insertPos + finalTextToInsert.length,
+      };
+      
+      // Set pending accept state to true
+      setIsPendingAccept(true);
+      isPendingAcceptRef.current = true;
+      
+      // Set cursor at the start of the inserted text
+      transaction = transaction.setSelection(
+        TextSelection.create(transaction.doc, insertPos)
+      );
+    } else {
+      // Insert text directly without placeholder
+      console.log('inserting text directly (no placeholder)', finalTextToInsert);
+      
+      transaction = transaction.insertText(finalTextToInsert, insertPos);
+      
+      // Set cursor at the end of the inserted text
+      transaction = transaction.setSelection(
+        TextSelection.create(transaction.doc, insertPos + finalTextToInsert.length)
+      );
+    }
     
     editorView.dispatch(transaction);
   }, [editorViewRef]);

@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { Message, ReasoningStep, MessagePart, FunctionCall } from "@/types/chat";
+import { useEditorStore } from "@/store/editor";
 
 interface UseStreamingChatProps {
   chatId?: string;
@@ -31,6 +32,9 @@ export const useStreamingChat = ({
 
   const onMessageUpdateRef = useRef(onMessageUpdate);
   const onErrorRef = useRef(onError);
+  
+  // Get the editor store function
+  const insertNotesIntoEditor = useEditorStore((state) => state.insertNotesIntoEditor);
 
   onMessageUpdateRef.current = onMessageUpdate;
   onErrorRef.current = onError;
@@ -204,9 +208,10 @@ export const useStreamingChat = ({
 
                     case "reasoning-started":
                       if (currentMessageId) {
-                        // Start a new reasoning step
+                        // Start a new reasoning step with unique ID
+                        const reasoningId = `${currentMessageId}-reason-${sequenceCounter}`;
                         currentReasoningStep = {
-                          id: `${currentMessageId}-reason`,
+                          id: reasoningId,
                           step: 1,
                           content: "",
                           type: "reasoning",
@@ -297,6 +302,19 @@ export const useStreamingChat = ({
                           functionCall.isCompleted = true;
                           functionCall.result = data.result;
                           
+                          // Insert formatted notes into editor when add_to_notes is called
+                          if (functionCall.name === "add_to_notes" && data.result) {
+                            console.log("=== ADD TO NOTES CALLED ===");
+                            console.log("Formatted Notes:", data.result.formattedNotes);
+                            console.log("Success:", data.result.success);
+                            console.log("==========================");
+                            
+                            // Insert notes into the editor at the end of the document
+                            if (data.result.success && data.result.formattedNotes) {
+                              insertNotesIntoEditor(data.result.formattedNotes);
+                            }
+                          }
+                          
                           // Update the corresponding part
                           const partIndex = currentParts.findIndex(
                             (part) => part.id === data.id
@@ -349,7 +367,7 @@ export const useStreamingChat = ({
         );
       }
     },
-    [chatId, clearError, handleError]
+    [chatId, clearError, handleError, insertNotesIntoEditor]
   );
 
   return {

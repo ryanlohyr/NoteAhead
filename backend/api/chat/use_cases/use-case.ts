@@ -2,14 +2,15 @@ import { Response } from "express";
 import OpenAI from "openai";
 import { StreamingEvent } from "../types";
 import { saveMessage } from "../data_access";
-import { addNumbersTool, searchKnowledgeBaseTool, executeTool } from "../tools";
+import { addNumbersTool, searchKnowledgeBaseTool, readFileTool, addToNotesTool, executeTool } from "../tools";
+import { fileDb } from "#db/index";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
 // Tool definitions
-const tools = [addNumbersTool, searchKnowledgeBaseTool];
+const tools = [addNumbersTool, searchKnowledgeBaseTool, readFileTool, addToNotesTool];
 
 export const getChatStream = async (
   message: string,
@@ -31,6 +32,12 @@ export const getChatStream = async (
         type: "message-start",
         id: messageId,
       });
+
+      // Fetch user's files for system prompt
+      const userFiles = await fileDb.getAllFiles(userId);
+      const filesListText = userFiles.length > 0
+        ? `\n\nAvailable Files:\n${userFiles.map(file => `- ${file.name} (ID: ${file.id})`).join('\n')}`
+        : '\n\nNo files available yet.';
 
       const inputMessages: Array<{
         role: string;
@@ -54,9 +61,22 @@ export const getChatStream = async (
         const systemInstruction = `You are a helpful AI assistant. 
         
 When users ask about their documents or uploaded files, use the search_knowledge_base tool to find relevant information.
+When users want to read the complete contents of a specific file, use the read_file tool with the file ID.
 When asked to add numbers, use the addNumbers function.
+${filesListText}
 
-Always provide clear, helpful responses based on the tools available to you.`;
+  <Formatting Links>
+  - You must always return file links in the format of [pageNumber](fileId), when referencing a page.
+  - only return file links that are in your context. You rather return no file links than return file links that are not in your context.
+  - You will get penalised if you return file links that are not in your context.
+
+  For Example:
+  Example 1:
+  Only cells with the proper conditions can proceed to the M phase to ensure damaged or incomplete DNA is not passed on to daughter cells [pageNumber](fileId).
+  </Formatting Links>
+
+Always provide clear, helpful responses based on the tools available to you.
+`;
 
         // Use OpenAI Responses API with o3 model
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -68,7 +88,7 @@ Always provide clear, helpful responses based on the tools available to you.`;
             },
             ...inputMessages,
           ],
-          model: "o3-mini",
+          model: "o3",
           stream: true,
           reasoning: {
             effort: "medium",
