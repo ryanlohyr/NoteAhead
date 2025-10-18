@@ -334,22 +334,34 @@ export default function CollabEditor({ docId, apiUrl = "http://localhost:8080" }
   }, [docId, apiUrl]);
 
   return (
-    <div className="collab-editor-container relative">
+    <div className="collab-editor-container relative h-[calc(100vh-50px)] flex flex-col overflow-hidden">
       <FloatingMenu view={editorView} />
-      <div className="editor-info">
+      <div className="editor-info flex-shrink-0">
         <h2 className="text-xl font-semibold mb-2">{docId}</h2>
         <div className="text-sm text-gray-600">{userString(users)}</div>
       </div>
-      <div ref={editorRef} className="editor-content prose max-w-none" />
+      <div ref={editorRef} className="editor-content prose max-w-none flex-1 flex flex-col min-h-0" />
       <style jsx global>{`
+        .editor-content {
+          overflow: hidden;
+        }
+
+        .editor-content > div {
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+        }
+
         .ProseMirror {
-          min-height: 400px;
+          flex: 1;
+          min-height: 0;
           padding: 1rem;
           border: 1px solid #ddd;
           border-radius: 0 0 4px 4px;
           outline: none;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           line-height: 1.6;
+          overflow-y: auto;
         }
 
         .ProseMirror-focused {

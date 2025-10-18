@@ -93,9 +93,7 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <div className="p-4 text-xs text-muted-foreground">
-          © 2025 NoteAhead
-        </div>
+
       </SidebarFooter>
     </Sidebar>
   );
