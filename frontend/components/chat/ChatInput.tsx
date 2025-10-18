@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, KeyboardEvent } from "react";
+import { useState, KeyboardEvent, useRef, useEffect } from "react";
 import { Send, Loader2, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -19,6 +18,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   placeholder = "Type your message...",
 }) => {
   const [input, setInput] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSend = () => {
     const trimmedInput = input.trim();
@@ -35,66 +35,58 @@ export const ChatInput: React.FC<ChatInputProps> = ({
     }
   };
 
+  // Focus textarea when loading changes
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [isLoading]);
+
   return (
-    <div className="border-t border-border p-4 bg-background">
-      <div className="flex gap-2 items-end">
+    <div className="sticky bottom-0 m-4 bg-background z-100">
+      {/* Custom textarea-like container */}
+      <div className="border border-gray-200 dark:border-gray-800 rounded-md bg-background min-h-[10px] flex flex-col">
         <div className="flex-1 relative">
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             disabled={isLoading}
+            className="w-full min-h-[10px] resize-none border-0 bg-transparent px-5 py-2 focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none outline-none"
             rows={1}
-            className={cn(
-              "w-full resize-none rounded-lg border border-input bg-background px-4 py-3 text-sm",
-              "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
-              "disabled:cursor-not-allowed disabled:opacity-50",
-              "min-h-[44px] max-h-[200px]"
-            )}
-            style={{
-              height: "auto",
-              minHeight: "44px",
-            }}
-            onInput={(e) => {
-              const target = e.target as HTMLTextAreaElement;
-              target.style.height = "auto";
-              target.style.height = `${Math.min(target.scrollHeight, 200)}px`;
-            }}
           />
         </div>
 
-        {isLoading ? (
-          <Button
-            onClick={onStop}
-            size="icon"
-            variant="destructive"
-            className="h-11 w-11 flex-shrink-0"
-            title="Stop generating"
-          >
-            <Square className="h-4 w-4" />
-          </Button>
-        ) : (
-          <Button
-            onClick={handleSend}
-            disabled={!input.trim() || isLoading}
-            size="icon"
-            className="h-11 w-11 flex-shrink-0"
-            title="Send message"
-          >
+        <div className="px-4 py-1 flex items-center justify-end">
+          <div className="flex items-center gap-2">
             {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Button
+                onClick={onStop}
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 text-red-500 hover:text-red-600 transition-colors"
+              >
+                <Square className="h-4 w-4" />
+              </Button>
             ) : (
-              <Send className="h-4 w-4" />
+              <Button
+                onClick={handleSend}
+                disabled={!input.trim() || isLoading}
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 text-blue-400 hover:text-blue-500 transition-colors"
+              >
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
             )}
-          </Button>
-        )}
-      </div>
-
-      <div className="mt-2 text-xs text-muted-foreground">
-        Press <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Enter</kbd> to
-        send, <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Shift+Enter</kbd>{" "}
-        for new line
+          </div>
+        </div>
       </div>
     </div>
   );

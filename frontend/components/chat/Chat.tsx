@@ -86,7 +86,7 @@ export const Chat: React.FC = () => {
     <div className="flex flex-col h-full bg-background">
       {/* Messages area */}
       <ScrollArea ref={scrollAreaRef} className="flex-1 h-full">
-        <div className="px-4 py-6 space-y-4">
+        <div className="px-4 py-6">
           {messages.length === 0 ? (
             <div className="text-center text-muted-foreground py-12">
               <Bot className="mx-auto h-12 w-12 mb-4 opacity-50" />

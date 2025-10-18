@@ -94,5 +94,14 @@ api/
 
 ## Environment Variables
 
-See `.env.example` for required environment variables.
+Required environment variables:
+
+- `OPENAI_API_KEY` - Your OpenAI API key for chat functionality with function calling
+- `DATABASE_URL` - PostgreSQL database connection string
+- `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_ANON_KEY` - Supabase anonymous key
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (for server-side operations)
+- `JWT_SECRET` - Secret key for JWT token signing
+
+Create a `.env` file in the backend directory with these variables.
 

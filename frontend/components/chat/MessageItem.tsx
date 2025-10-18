@@ -1,7 +1,6 @@
 "use client";
 
 import { Message, ReasoningStep as ReasoningStepType } from "@/types/chat";
-import { User, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ReasoningStep } from "./ReasoningStep";
 import { useState } from "react";
@@ -29,35 +28,20 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
   return (
     <div
       className={cn(
-        "flex gap-3 p-4 rounded-lg",
-        isUser ? "bg-muted/30" : "bg-background"
+        "flex mb-4",
+        isUser ? "justify-end" : "justify-start"
       )}
     >
-      {/* Avatar */}
-      <div className="flex-shrink-0">
-        <div
-          className={cn(
-            "w-8 h-8 rounded-full flex items-center justify-center",
-            isUser ? "bg-primary" : "bg-blue-500"
-          )}
-        >
-          {isUser ? (
-            <User className="h-4 w-4 text-primary-foreground" />
-          ) : (
-            <Bot className="h-4 w-4 text-white" />
-          )}
-        </div>
-      </div>
-
       {/* Content */}
-      <div className="flex-1 min-w-0 space-y-3">
-        <div className="text-sm font-medium text-foreground">
-          {isUser ? "You" : "Assistant"}
-        </div>
-
+      <div
+        className={cn(
+          "flex flex-col space-y-2 max-w-[75%]",
+          isUser ? "items-end" : "items-start"
+        )}
+      >
         {/* Reasoning steps */}
         {!isUser && reasoningParts.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-2 w-full">
             <button
               onClick={() => setShowReasoning(!showReasoning)}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -75,10 +59,17 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
         )}
 
         {/* Main content */}
-        <div className="text-sm text-foreground whitespace-pre-wrap break-words">
+        <div
+          className={cn(
+            "rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap break-words",
+            isUser
+              ? "bg-blue-500 text-white rounded-tr-sm"
+              : "bg-blue-50 text-gray-900 rounded-tl-sm"
+          )}
+        >
           {content}
           {message.isStreaming && !reasoningParts.length && (
-            <span className="inline-block w-1 h-4 ml-1 bg-foreground animate-pulse" />
+            <span className="inline-block w-1 h-4 ml-1 bg-current animate-pulse" />
           )}
         </div>
       </div>
