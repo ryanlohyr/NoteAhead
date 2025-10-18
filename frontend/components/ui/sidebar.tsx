@@ -32,6 +32,26 @@ const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
+// Helper function to read the sidebar state from cookie
+function getSidebarStateFromCookie(): boolean | undefined {
+  if (typeof document === "undefined") return undefined
+  
+  try {
+    const cookies = document.cookie.split(';')
+    const sidebarCookie = cookies.find(cookie => 
+      cookie.trim().startsWith(`${SIDEBAR_COOKIE_NAME}=`)
+    )
+    
+    if (!sidebarCookie) return undefined
+    
+    const value = sidebarCookie.split('=')[1]?.trim()
+    return value === "true"
+  } catch (error) {
+    console.warn("Error reading sidebar cookie:", error)
+    return undefined
+  }
+}
+
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
   open: boolean
@@ -79,6 +99,8 @@ const SidebarProvider = React.forwardRef<
     // This is the internal state of the sidebar.
     // We use openProp and setOpenProp for control from outside the component.
     const [_open, _setOpen] = React.useState(defaultOpen)
+    const [isHydrated, setIsHydrated] = React.useState(false)
+    
     const open = openProp ?? _open
     const setOpen = React.useCallback(
       (value: boolean | ((value: boolean) => boolean)) => {
@@ -90,10 +112,25 @@ const SidebarProvider = React.forwardRef<
         }
 
         // This sets the cookie to keep the sidebar state.
-        document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+        if (isHydrated) {
+          document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+        }
       },
-      [setOpenProp, open]
+      [setOpenProp, open, isHydrated]
     )
+
+    // Effect to handle hydration and initial cookie reading
+    React.useEffect(() => {
+      setIsHydrated(true)
+      
+      // Only read cookie on initial mount if not controlled from outside
+      if (!openProp) {
+        const cookieState = getSidebarStateFromCookie()
+        if (cookieState !== undefined) {
+          _setOpen(cookieState)
+        }
+      }
+    }, [openProp])
 
     // Helper to toggle the sidebar.
     const toggleSidebar = React.useCallback(() => {
@@ -104,6 +141,8 @@ const SidebarProvider = React.forwardRef<
 
     // Adds a keyboard shortcut to toggle the sidebar.
     React.useEffect(() => {
+      if (!isHydrated) return
+      
       const handleKeyDown = (event: KeyboardEvent) => {
         if (
           event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
@@ -116,7 +155,7 @@ const SidebarProvider = React.forwardRef<
 
       window.addEventListener("keydown", handleKeyDown)
       return () => window.removeEventListener("keydown", handleKeyDown)
-    }, [toggleSidebar])
+    }, [toggleSidebar, isHydrated])
 
     // We add a state so that we can do data-state="expanded" or "collapsed".
     // This makes it easier to style the sidebar with Tailwind classes.
