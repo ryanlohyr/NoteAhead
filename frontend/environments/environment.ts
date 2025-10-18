@@ -14,5 +14,3 @@ export const environment: EnvironmentConfig = {
   appEnv: process.env.APP_ENV || "development",
 };
 
-console.log("environment test ", environment);
-

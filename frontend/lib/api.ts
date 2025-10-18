@@ -66,6 +66,6 @@ export const fetchWrapper = async <T>(url: string, options: FetchOptions = {}): 
   }
 
   // Return JSON response
-  return responseType === "json" ? response.json() : response.blob();
+  return (responseType === "json" ? response.json() : response.blob()) as Promise<T>;
 };
 

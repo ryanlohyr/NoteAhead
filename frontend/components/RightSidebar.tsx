@@ -10,7 +10,7 @@ export const RightSidebar = () => {
   const { closeRight, activeView, setActiveView } = useRightSidebarStore();
 
   return (
-    <div className="h-full w-full bg-background border-l flex flex-col">
+    <div className="h-full w-full bg-background border-l flex flex-col max-h-[100vh]">
       <div className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-2">
           <button
