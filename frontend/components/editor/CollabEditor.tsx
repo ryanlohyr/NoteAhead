@@ -6,14 +6,13 @@ import { EditorView } from "prosemirror-view";
 import { history } from "prosemirror-history";
 import { dropCursor } from "prosemirror-dropcursor";
 import { gapCursor } from "prosemirror-gapcursor";
-import { menuBar } from "prosemirror-menu";
 import { baseKeymap } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
 import { schema } from "@/lib/collab/schema";
 import { Reporter } from "@/lib/collab/reporter";
 import { commentPlugin, commentUI } from "@/lib/collab/comment";
-import { getFullMenu } from "@/lib/collab/menu";
 import { buildKeymap } from "@/lib/collab/keymap";
+import { buildInputRules } from "@/lib/collab/inputrules";
 import { FloatingMenu } from "./FloatingMenu";
 import { supabase } from "@/lib/supabase";
 import type { RealtimeChannel } from "@supabase/supabase-js";
@@ -54,7 +53,7 @@ export default function CollabEditor({
     isPendingAccept,
     setIsPendingAccept,
     isPendingAcceptRef,
-  } = useEditorInsertion(editorViewRef);
+  } = useEditorInsertion(editorViewRef);  
   
   // Test input states
   const [testLineNumber, setTestLineNumber] = useState<string>("1");
@@ -279,6 +278,7 @@ export default function CollabEditor({
     const state = EditorState.create({
       doc: initialDoc,
         plugins: [
+          buildInputRules(), // Add markdown input rules (must be early in plugin order)
           placeholderValidationPlugin, // Validate placeholder range on document changes
           placeholderInputPlugin, // Add placeholder input handler
           buildKeymap(),
@@ -288,7 +288,6 @@ export default function CollabEditor({
           }),
           dropCursor(),
           gapCursor(),
-          menuBar({ floating: false, content: getFullMenu() }),
           history(),
           commentPlugin,
         commentUI((transaction: Transaction) => {
