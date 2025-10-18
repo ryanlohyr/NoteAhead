@@ -67,7 +67,7 @@ export default function NotePage() {
 
   return (
     <div className="p-6">
-      <div className="mb-4">
+      <div className="mb-4 pl-3.5 ">
         {isEditingTitle ? (
           <Input
             value={title}

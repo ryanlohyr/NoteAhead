@@ -12,16 +12,36 @@
   flex: 1;
   min-height: 0;
   padding: 1rem;
-  border: 1px solid #ddd;
-  border-radius: 0 0 4px 4px;
   outline: none;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.6;
   overflow-y: auto;
+  position: relative;
 }
 
-.ProseMirror-focused {
-  border-color: #4a90e2;
+/* Placeholder text when editor is empty */
+.ProseMirror .is-editor-empty::before {
+  content: 'Write, press / for commands';
+  float: left;
+  color: #adb5bd;
+  pointer-events: none;
+  height: 0;
+}
+
+.ProseMirror p.is-editor-empty::before {
+  content: 'Write, press / for commands';
+  float: left;
+  color: #adb5bd;
+  pointer-events: none;
+  height: 0;
+}
+
+/* Also handle when it's the only empty paragraph */
+.ProseMirror:empty::before,
+.ProseMirror > .is-editor-empty:only-child::before {
+  content: 'Write, press / for commands';
+  color: #adb5bd;
+  pointer-events: none;
 }
 
 /* Text formatting styles */
@@ -188,9 +208,6 @@
 
 /* Enhanced Menu Bar Styles */
 .ProseMirror-menubar {
-  border: 1px solid #ddd;
-  border-bottom: none;
-  border-radius: 4px 4px 0 0;
   padding: 0.5rem;
   background: linear-gradient(to bottom, #ffffff, #f9f9f9);
   display: flex;

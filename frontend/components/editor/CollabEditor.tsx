@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { EditorState, Transaction, TextSelection, Plugin, PluginKey } from "prosemirror-state";
-import { EditorView } from "prosemirror-view";
+import { EditorView, Decoration, DecorationSet } from "prosemirror-view";
 import { history } from "prosemirror-history";
 import { dropCursor } from "prosemirror-dropcursor";
 import { gapCursor } from "prosemirror-gapcursor";
@@ -172,6 +172,40 @@ export default function CollabEditor({
       }
     });
 
+    // Plugin to add placeholder class to empty paragraphs
+    const placeholderClassPlugin = new Plugin({
+      key: new PluginKey("placeholderClass"),
+      state: {
+        init() {
+          return DecorationSet.empty;
+        },
+        apply(tr, set) {
+          return set.map(tr.mapping, tr.doc);
+        }
+      },
+      props: {
+        decorations(state) {
+          const doc = state.doc;
+          const decorations: Decoration[] = [];
+          
+          // Check if document is effectively empty (only one paragraph with no content)
+          if (doc.childCount === 1) {
+            const firstChild = doc.firstChild;
+            if (firstChild && firstChild.type.name === 'paragraph' && firstChild.content.size === 0) {
+              // Add a node decoration with the class
+              decorations.push(
+                Decoration.node(0, firstChild.nodeSize, {
+                  class: 'is-editor-empty'
+                })
+              );
+            }
+          }
+          
+          return decorations.length > 0 ? DecorationSet.create(doc, decorations) : DecorationSet.empty;
+        },
+      },
+    });
+
     // Plugin to handle autocomplete-like behavior for placeholder text
     const placeholderInputPlugin = new Plugin({
       key: new PluginKey("placeholderInput"),
@@ -278,16 +312,12 @@ export default function CollabEditor({
       } catch (error) {
         console.error("Failed to parse initial document, using default:", error);
         doc = schema.node("doc", null, [
-          schema.node("paragraph", null, [
-            schema.text("Hey there, start editing your document..."),
-          ]),
+          schema.node("paragraph"),
         ]);
       }
     } else {
       doc = schema.node("doc", null, [
-        schema.node("paragraph", null, [
-          schema.text("Hey there, start editing your document..."),
-        ]),
+        schema.node("paragraph"),
       ]);
     }
 
@@ -296,6 +326,7 @@ export default function CollabEditor({
         plugins: [
           buildInputRules(), // Add markdown input rules (must be early in plugin order)
           placeholderValidationPlugin, // Validate placeholder range on document changes
+          placeholderClassPlugin, // Add placeholder class to empty paragraphs
           placeholderInputPlugin, // Add placeholder input handler
           buildKeymap(),
           keymap({
