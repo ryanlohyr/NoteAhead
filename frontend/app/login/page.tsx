@@ -30,9 +30,9 @@ export default function LoginPage() {
   }
 
   // If user is authenticated, don't render the login form (redirect is happening)
-  if (session) {
-    return null;
-  }
+  // if (session) {
+  //   return null;
+  // }
 
   return (
     <div className="min-h-screen bg-white flex">

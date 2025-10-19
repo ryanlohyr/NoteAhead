@@ -21,6 +21,7 @@ import { useEditorInsertion } from "@/hooks/useEditorInsertion";
 import { useUpdateNote } from "@/query/notes";
 import { filePageLinkPlugin } from "@/lib/collab/filePageLink";
 import { convertMarkdownLinksInDocument } from "@/lib/collab/convertMarkdownLinks";
+import { convertMarkdownHeadersInDocument } from "@/lib/collab/convertMarkdownHeaders";
 import { useFileManagerStore } from "@/store/fileManager";
 import { useRightSidebarStore } from "@/store/sidebar";
 import { useEditorStore } from "@/store/editor";
@@ -29,6 +30,7 @@ import "./CollabEditor.css";
 
 interface CollabEditorProps {
   docId: string;
+  noteName?: string;
   edgeFunctionUrl?: string;
   initialDoc?: any; // ProseMirror JSON document
 }
@@ -43,6 +45,7 @@ interface HealthCheckResponse {
 
 export default function CollabEditor({
   docId,
+  noteName,
   edgeFunctionUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/collab-session`
     : "http://localhost:54321/functions/v1/collab-session",
@@ -63,6 +66,7 @@ export default function CollabEditor({
   // Get stores for file page link handling
   const scrollToPageRef = useFileManagerStore((state) => state.scrollToPageRef);
   const selectFile = useFileManagerStore((state) => state.selectFile);
+  const currentFileId = useFileManagerStore((state) => state.selectedFileId);
   const { isRightOpen, openRight, setActiveView } = useRightSidebarStore();
   const { setOpen: setLeftSidebarOpen } = useSidebar();
   const setInsertTextFunction = useEditorStore((state) => state.setInsertTextFunction);
@@ -159,21 +163,31 @@ export default function CollabEditor({
         placeholderRangeRef.current = null; // Clear the reference
         setIsPendingAccept(false); // Clear pending state
         isPendingAcceptRef.current = false;
-        // After accepting placeholder text, convert any markdown links
+        // After accepting placeholder text, convert any markdown links and headers
         if (editorViewRef.current) {
           const convertTr = convertMarkdownLinksInDocument(editorViewRef.current.state);
           if (convertTr) {
             editorViewRef.current.dispatch(convertTr);
           }
+          const convertHeadersTr = convertMarkdownHeadersInDocument(editorViewRef.current.state);
+          if (convertHeadersTr) {
+            editorViewRef.current.dispatch(convertHeadersTr);
+          }
         }
         return true;
       }
 
-      // If no placeholder handling occurred, still attempt markdown link conversion on Tab
+      // If no placeholder handling occurred, still attempt markdown link and header conversion on Tab
       if (editorViewRef.current) {
         const convertTr = convertMarkdownLinksInDocument(editorViewRef.current.state);
         if (convertTr) {
           editorViewRef.current.dispatch(convertTr);
+        }
+        const convertHeadersTr = convertMarkdownHeadersInDocument(editorViewRef.current.state);
+        if (convertHeadersTr) {
+          editorViewRef.current.dispatch(convertHeadersTr);
+        }
+        if (convertTr || convertHeadersTr) {
           return true;
         }
       }
@@ -384,6 +398,7 @@ export default function CollabEditor({
           setLeftSidebarOpen,
           setActiveView,
           selectFile,
+          currentFileId
         }), // Custom file page link rendering
         buildKeymap(),
         keymap({
@@ -406,6 +421,7 @@ export default function CollabEditor({
                 event: "editor-change",
                 payload: {
                   doc: newState.doc.toJSON(),
+                  noteName,
                   timestamp: Date.now(),
                 },
               });
@@ -494,14 +510,19 @@ export default function CollabEditor({
               clearTimeout(autoConvertTimerRef.current);
             }
 
-            // Set new timer to convert links after 1 second of no typing
+            // Set new timer to convert links and headers after 1 second of no typing
             autoConvertTimerRef.current = setTimeout(() => {
               if (view && !view.isDestroyed) {
-                console.log("⏰ Auto-converting markdown links...");
+                console.log("⏰ Auto-converting markdown links and headers...");
                 const tr = convertMarkdownLinksInDocument(view.state);
                 if (tr) {
                   view.dispatch(tr);
-                  console.log("✅ Auto-conversion completed");
+                  console.log("✅ Auto-conversion of links completed");
+                }
+                const headersTr = convertMarkdownHeadersInDocument(view.state);
+                if (headersTr) {
+                  view.dispatch(headersTr);
+                  console.log("✅ Auto-conversion of headers completed");
                 }
               }
             }, 1000); // 1 second delay
@@ -534,6 +555,7 @@ export default function CollabEditor({
             payload: {
               doc: newState.doc.toJSON(),
               markdown,
+              noteName,
               cursorPosition: cursorInfo.cursorPosition,
               lineNumber: cursorInfo.lineNumber,
               isAtEndOfLine: cursorInfo.isAtEndOfLine,
@@ -615,6 +637,7 @@ export default function CollabEditor({
     isHealthy,
     channelName,
     docId,
+    noteName,
     insertTextAtParagraph,
     placeholderRangeRef,
     setIsPendingAccept,

@@ -1,18 +1,18 @@
-import "@/app/globals.css";
-import { getFaviconMetadata } from "@/utils/favicon";
-import { getMetadataTitle, getMetadataDescription } from "@/utils/metadata";
+// import "@/app/globals.css";
+// import { getFaviconMetadata } from "@/utils/favicon";
+// import { getMetadataTitle, getMetadataDescription } from "@/utils/metadata";
 
-export const metadata = {
-  title: getMetadataTitle(),
-  description: getMetadataDescription(),
-  icons: getFaviconMetadata(),
-};
+// export const metadata = {
+//   title: getMetadataTitle(),
+//   description: getMetadataDescription(),
+//   icons: getFaviconMetadata(),
+// };
 
-export default function HomeLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en">
-      <body>{children}</body>
-    </html>
-  );
-}
+// export default function HomeLayout({ children }: { children: React.ReactNode }) {
+//   return (
+//     <html lang="en">
+//       <body>{children}</body>
+//     </html>
+//   );
+// }
 

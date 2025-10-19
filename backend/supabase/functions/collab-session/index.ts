@@ -282,7 +282,6 @@ async function realtimeBackgroundTask(
   });
 
   // Get API keys from environment
-  console.log("DENO ENV is", Deno.env.toObject());
   
   const groqApiKey = Deno.env.get("GROQ_API_KEY") ?? "";
   const openAiApiKey = Deno.env.get("OPENAI_API_KEY") ?? "";
@@ -332,6 +331,7 @@ async function realtimeBackgroundTask(
       const markdown = payload.payload?.markdown || "";
       const cursorCurrentLine = payload.payload?.cursorCurrentLine || 1;
       const cursorPositionAtCurrentLine = payload.payload?.cursorPositionAtCurrentLine || 0;
+      const noteName = payload.payload?.noteName || "";
 
       // Check if we should call the AI (if document has enough content)
       if (docContent.length > 0 && markdown.length >= CHARACTER_THRESHOLD) {
@@ -339,6 +339,7 @@ async function realtimeBackgroundTask(
           cursorCurrentLine,
           cursorPositionAtCurrentLine,
           markdownLength: markdown.length,
+          noteName,
         });
 
         // Check if an AI call is already in progress
@@ -355,7 +356,8 @@ async function realtimeBackgroundTask(
             markdown,
             cursorCurrentLine,
             cursorPositionAtCurrentLine,
-            userChunksContext
+            userChunksContext,
+            noteName
           )
           .then(async (aiResponse) => {
             if (aiResponse) {

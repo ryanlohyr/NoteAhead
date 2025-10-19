@@ -57,7 +57,8 @@ export class OpenAIProvider implements AIProvider {
     markdown: string,
     cursorCurrentLine: number,
     cursorPositionAtCurrentLine: number,
-    userChunksContext: string = ""
+    userChunksContext: string = "",
+    noteName: string = ""
   ): Promise<AIResponse | null> {
     try {
       console.log(`[${this.name}] Calling API with model ${this.model}`);
@@ -67,7 +68,8 @@ export class OpenAIProvider implements AIProvider {
       const systemPrompt = this.buildSystemPrompt(
         cursorCurrentLine,
         cursorPositionAtCurrentLine,
-        userChunksContext
+        userChunksContext,
+        noteName
       );
 
       console.log("Stats: Length of system prompt:", systemPrompt.length);
@@ -122,7 +124,8 @@ export class OpenAIProvider implements AIProvider {
   private buildSystemPrompt(
     cursorCurrentLine: number,
     cursorPositionAtCurrentLine: number,
-    userChunksContext: string
+    userChunksContext: string,
+    noteName: string = ""
   ): string {
     return `You are an autocomplete engine. Continue the user's text by predicting the most likely next words from the current cursor position. Do not critique, explain, rephrase, or suggest changes.
 
@@ -145,6 +148,7 @@ Guidelines:
 - is_current_line: Set to "true" if insertion should happen at the current cursor position; otherwise "false" and provide the line number in <line_position>.
 - Only provide the XML, no additional text.
 
+The note name is ${noteName}
 The user is currently at line ${cursorCurrentLine}, position ${cursorPositionAtCurrentLine} in the line.`;
   }
 
@@ -194,7 +198,8 @@ export class GroqProvider implements AIProvider {
     markdown: string,
     cursorCurrentLine: number,
     cursorPositionAtCurrentLine: number,
-    userChunksContext: string = ""
+    userChunksContext: string = "",
+    noteName: string = ""
   ): Promise<AIResponse | null> {
     try {
       console.log(`[${this.name}] Calling API with model ${this.model}`);
@@ -204,7 +209,8 @@ export class GroqProvider implements AIProvider {
       const systemPrompt = this.buildSystemPrompt(
         cursorCurrentLine,
         cursorPositionAtCurrentLine,
-        userChunksContext
+        userChunksContext,
+        noteName
       );
 
       console.log("Stats: Length of system prompt:", systemPrompt.length);
@@ -259,7 +265,8 @@ export class GroqProvider implements AIProvider {
   private buildSystemPrompt(
     cursorCurrentLine: number,
     cursorPositionAtCurrentLine: number,
-    userChunksContext: string
+    userChunksContext: string,
+    noteName: string = ""
   ): string {
     return `You are a helpful writing assistant. Analyze the user's text and provide a contextual suggestion or completion.
 
@@ -276,7 +283,7 @@ Guidelines:
 - text: Your suggestion text (1-2 sentences max, contextual and relevant). Do NOT include any file references or links - just provide the text suggestion.
 - Only provide the XML, no additional text
 - Use the context from the user's documents to provide more relevant and accurate suggestions
-
+- The note name is ${noteName}
 The user is currently at line ${cursorCurrentLine}, position ${cursorPositionAtCurrentLine} in the line.`;
   }
 
