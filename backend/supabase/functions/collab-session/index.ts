@@ -18,7 +18,7 @@ const activeChannels = new Map<string, RealtimeChannel>();
 
 // AI Provider Configuration
 // 🔧 CHANGE THIS TO SWITCH BETWEEN PROVIDERS: "openai" | "groq"
-const ACTIVE_PROVIDER: ProviderType = "openai";
+const ACTIVE_PROVIDER: ProviderType = Deno.env.get("ACTIVE_PROVIDER") ?? "openai";
 const CHARACTER_THRESHOLD = 20;
 
 /**
