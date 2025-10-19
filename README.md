@@ -51,7 +51,8 @@ The frontend will start on `http://localhost:3000`.
 ### Backend
 - **Framework**: Express.js
 - **Language**: TypeScript
-- **Database**: (To be configured)
+- **Database**: Supabase (PostgreSQL)
+- **Edge Functions**: Supabase Edge Functions (Deno runtime)
 
 ### Frontend
 - **Framework**: Next.js 14 (App Router)
@@ -81,20 +82,39 @@ npm run build
 npm start
 ```
 
+## Supabase Edge Functions
+
+Edge functions are located in `backend/supabase/functions/` and run on the Deno runtime.
+
+### Creating a New Function
+```bash
+supabase functions new function-name
+```
+
+### Local Development
+```bash
+# Serve a specific function locally
+supabase functions serve function-name
+
+# Serve all functions
+supabase functions serve
+```
+
+### Deploying Functions
+```bash
+# Deploy a specific function
+supabase functions deploy function-name
+
+# Deploy all functions
+supabase functions deploy
+```
+
+For more information, see the [Supabase Functions Documentation](https://supabase.com/docs/guides/functions/quickstart).
+
 ## Documentation
 
 - [Backend README](./backend/README.md)
 - [Frontend README](./frontend/README.md)
-
-
-## Readme stuff
-https://supabase.com/docs/guides/functions/quickstart
-
-this creates a new function
-supabase functions new hello-world
-
-this deploys it     
-supabase functions serve hello-world
 
 
 
